@@ -139,22 +139,22 @@ Module Levels (PD: ProtocolDefs).
         (* Nonces are Low when nonceComp holds *)
         | Level_Nonce: forall l bs L nu,
             Logged (New (Literal bs) (Nonce nu)) L ->
-            (l = Low -> nonceComp (Literal bs) L) ->
+            (l = High \/ (l = Low -> nonceComp (Literal bs) L)) ->
             Level l (Literal bs) L 
         (* HMacKeys are Low when hmacComp holds *)
         | Level_HMacKey: forall l bs L hu,
             Logged (New (Literal bs) (HMacKey hu)) L ->
-            (l = Low -> hmacComp (Literal bs) L) ->
+            (l = High \/ (l = Low -> hmacComp (Literal bs) L)) ->
             Level l (Literal bs) L 
         (* SEncKeys are Low when sencComp holds *)
         | Level_SEncKey: forall l bs L su,
             Logged (New (Literal bs) (SEncKey su)) L ->
-            (l = Low -> sencComp (Literal bs) L) ->
+            (l = High \/ (l = Low -> sencComp (Literal bs) L)) ->
             Level l (Literal bs) L 
         (* SigKeys are Low when sigComp holds *)
         | Level_SigKey: forall l bs L su,
             Logged (New (Literal bs) (SignKey su)) L ->
-            (l = Low -> sigComp (Literal bs) L) ->
+            (l = High \/ (l = Low -> sigComp (Literal bs) L)) ->
             Level l (Literal bs) L 
         (* VerfKeys are always Low *)
         | Level_VerKey: forall l bs L su,
@@ -167,7 +167,7 @@ Module Levels (PD: ProtocolDefs).
         (* DecKeys are Low when encComp holds *)
         | Level_DecKey: forall l bs L eu,
             Logged (New (Literal bs) (DecKey eu)) L ->
-            (l = Low -> encComp (Literal bs) L) ->
+            (l = High \/ (l = Low -> encComp (Literal bs) L)) ->
             Level l (Literal bs) L 
 
         (* Paris are as Low as their components *)
@@ -197,4 +197,34 @@ Module Levels (PD: ProtocolDefs).
             Level Low k L ->
             Level Low p L ->
             Level l (SEnc k p) L.
+
+    Theorem Low_High: forall t L,
+        Level Low t L -> Level High t L.
+    Proof.
+        intros t L Hlow.
+        induction Hlow.
+        - apply Level_AdversaryGuess. assumption.
+        - apply Level_Nonce with (nu:=nu).
+            * assumption.
+            * left. tauto.
+        - apply Level_HMacKey with (hu:=hu). 
+            * assumption.
+            * left. tauto.
+        - apply Level_SEncKey with (su:=su).
+            * assumption.
+            * left. tauto.
+        - apply Level_SigKey with (su:=su).
+            * assumption.
+            * left. tauto.
+        - apply Level_VerKey with (su:=su). assumption.
+        - apply Level_EncKey with (eu:=eu). assumption.
+        - apply Level_DecKey with (eu:=eu).
+            * assumption.
+            * left. tauto.
+        - apply Level_Pair ; assumption.
+        - apply Level_HMac ; assumption.
+        - apply Level_HMac_Low ; assumption.
+        - apply Level_SEnc with (l':=l') ; assumption.
+        - apply Level_SEnc_Low ; assumption. 
+    Qed.
 End Levels.
