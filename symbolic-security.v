@@ -1,6 +1,5 @@
 Require Import String.
 Require Import ListSet.
-Require Import Program.
 
 (* Symbolic models in cryptography *)
 (*
@@ -89,7 +88,7 @@ Module Type ProtocolInvariants (PD: ProtocolDefs).
     (* As follow : 
         - a release primComp for each kind of primitive usage, and proofs that the release conditions are stable
         - a payload condition canPrim for each kind of primitive key usage (excluding nonces), also equipped with proofs of stability.
-        Note : Asymmetric cryptography is treated in the same way
+        Note : Assymetric cryptography is treated in the same way
     *)
 
     (* Nonce Predicate *)
@@ -114,8 +113,8 @@ Module Type ProtocolInvariants (PD: ProtocolDefs).
     Parameter sigComp: term -> log -> Prop.
     Parameter sigComp_Stable: forall t, Stable (sigComp t).
 
-    Parameter canSig: term -> term -> log -> Prop.
-    Parameter canSig_Stable: forall k p, Stable (canSig k p).
+    Parameter canSign: term -> term -> log -> Prop.
+    Parameter canSign_Stable: forall k p, Stable (canSign k p).
 
     (* Enc Predicates *)
     Parameter encComp: term -> log -> Prop.
@@ -126,8 +125,11 @@ Module Type ProtocolInvariants (PD: ProtocolDefs).
 End ProtocolInvariants.
 
 
-Module Levels (PD: ProtocolDefs).
+Module CryptographicInvariants (PD: ProtocolDefs).
     Include ProtocolInvariants PD.
+
+    Definition GoodLog (L: log): Prop :=
+        WF_Log L /\ LogInvariant L.
 
     Inductive level := Low | High.
     Inductive Level: level -> term -> log -> Prop :=
@@ -196,7 +198,29 @@ Module Levels (PD: ProtocolDefs).
         | Level_SEnc_Low: forall l k p L,
             Level Low k L ->
             Level Low p L ->
-            Level l (SEnc k p) L.
+            Level l (SEnc k p) L
+            
+        (* Honests Sigs are as Low as their payload *)
+        | Level_Sig : forall l k m L,
+            canSign k m L ->
+            Level l m L ->
+            Level l (Sign k m) L 
+        (* Dishonest Sigs are Low *)
+        | Level_Sig_Low : forall l k m L,
+            Level Low k L ->
+            Level Low m L ->
+            Level l (Sign k m) L
+
+        (* Honest Encryptions are Low *)
+        | Level_Enc : forall l k p L,
+            canEnc k p L ->
+            Level High p L ->
+            Level l (Enc k p) L 
+        (* Dishonest Encryptions are Low *)
+        | Level_Enc_Low : forall l k p L,
+            Level Low k L ->
+            Level Low p L ->
+            Level l (Enc k p) L.
     
     (* Generic Invariants: Low is included in High. *)
     Theorem Low_High: forall t L,
@@ -227,6 +251,10 @@ Module Levels (PD: ProtocolDefs).
         - apply Level_HMac_Low ; assumption.
         - apply Level_SEnc with (l':=l') ; assumption.
         - apply Level_SEnc_Low ; assumption. 
+        - apply Level_Sig ; assumption.
+        - apply Level_Sig_Low ; assumption.
+        - apply Level_Enc ; assumption.
+        - apply Level_Enc_Low ; assumption.  
     Qed.
 
     (* Generic Invariants: Level is stable. *)
@@ -313,17 +341,33 @@ Module Levels (PD: ProtocolDefs).
             * apply IHHlevelL. assumption.
         - apply Level_SEnc_Low.
             * apply IHHlevelL1. assumption.
-            * apply IHHlevelL2. assumption.  
+            * apply IHHlevelL2. assumption. 
+        - apply Level_Sig.
+            * assert ( Hstable : Stable (canSign k m) ). apply canSign_Stable. 
+                unfold Stable in Hstable. specialize Hstable with (L:=L) (L':=L').
+                apply Hstable ; assumption.
+            * apply IHHlevelL. assumption.
+        - apply Level_Sig_Low.
+            * apply IHHlevelL1. assumption.
+            * apply IHHlevelL2. assumption.
+        - apply Level_Enc.
+            * assert ( Hstable : Stable (canEnc k p) ). apply canEnc_Stable.
+                unfold Stable in Hstable. specialize Hstable with (L:=L) (L':=L').
+                apply Hstable ; assumption.
+            * apply IHHlevelL. assumption.
+        - apply Level_Enc_Low.
+            * apply IHHlevelL1. assumption.
+            * apply IHHlevelL2. assumption.
     Qed.
 
     (* Generic Invariants: Level inversion. *)
     Theorem LowHmacKeyLiteral_Inversion : forall L k hu,
-        WF_Log L ->
+        GoodLog L ->
         Logged (New (Literal k) (HMacKey hu)) L ->
         Level Low (Literal k) L ->
         hmacComp (Literal k) L.
     Proof. 
-        intros L k hu. intros HWfLog Hlog Hlevel. 
+        intros L k hu. intros HGoodLog Hlog Hlevel.
     Admitted.
 
     Theorem HMac_Inversion : forall L l k p,
