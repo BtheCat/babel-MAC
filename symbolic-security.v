@@ -360,6 +360,17 @@ Module CryptographicInvariants (PD: ProtocolDefs).
             * apply IHHlevelL2. assumption.
     Qed.
 
+    (* Generic Invariants: Distinct usages are absurd *)
+    Theorem AbsurdDistinctUsages : forall P L t u u',
+        GoodLog L ->
+        u <> u' ->
+        Logged (New t u) L ->
+        Logged (New t u') L ->
+        P.
+    Proof.
+
+    Admitted.
+
     (* Generic Invariants: Level inversion. *)
     Theorem LowHmacKeyLiteral_Inversion : forall L k hu,
         GoodLog L ->
@@ -376,4 +387,4 @@ Module CryptographicInvariants (PD: ProtocolDefs).
     Proof.
         intros L l k p. intro Hlevel.
     Admitted.
-End Levels.
+End CryptographicInvariants.
