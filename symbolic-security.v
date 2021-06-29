@@ -130,7 +130,7 @@ Module Levels (PD: ProtocolDefs).
     Include ProtocolInvariants PD.
 
     Inductive level := Low | High.
-    Inductive Level: level -> term -> log -> Type :=
+    Inductive Level: level -> term -> log -> Prop :=
         (* AdversaryGuesses are always Low *)
         | Level_AdversaryGuess: forall l bs L,
             Logged (New (Literal bs) AdversaryGuess) L ->
@@ -197,11 +197,12 @@ Module Levels (PD: ProtocolDefs).
             Level Low k L ->
             Level Low p L ->
             Level l (SEnc k p) L.
-
+    
+    (* Generic Invariants: Low is included in High. *)
     Theorem Low_High: forall t L,
         Level Low t L -> Level High t L.
     Proof.
-        intros t L Hlow.
+        intros t L. intro Hlow.
         induction Hlow.
         - apply Level_AdversaryGuess. assumption.
         - apply Level_Nonce with (nu:=nu).
@@ -228,68 +229,69 @@ Module Levels (PD: ProtocolDefs).
         - apply Level_SEnc_Low ; assumption. 
     Qed.
 
+    (* Generic Invariants: Level is stable. *)
     Theorem Level_Stable: forall l t L L',
         leq_log L L' -> Level l t L ->
         Level l t L'.
     Proof.
-        intros l t L L' Hleq_log HlevelL.
+        intros l t L L'. intros Hleq_log HlevelL.
         induction HlevelL.
         - apply Level_AdversaryGuess. unfold leq_log in Hleq_log.
             specialize Hleq_log with (e:=(New (Literal bs) AdversaryGuess)).
-            apply Hleq_log in l0. assumption.
+            apply Hleq_log in H. assumption.
         - apply Level_Nonce with (nu:=nu). 
             * unfold leq_log in Hleq_log.
                 specialize Hleq_log with (e:=(New (Literal bs) (Nonce nu))).
-                apply Hleq_log in l0. assumption.
-            * destruct o as [oleft | oright].
+                apply Hleq_log in H. assumption.
+            * destruct H0 as [H0left | H0right].
                 + left. assumption.
-                + right. intro Hllow. apply oright in Hllow. 
+                + right. intro Hllow. apply H0right in Hllow. 
                     assert ( Hstable : Stable (nonceComp (Literal bs)) ). apply nonceComp_Stable.
                     unfold Stable in Hstable. specialize Hstable with (L:=L) (L':=L').
                     apply Hstable ; assumption.
         - apply Level_HMacKey with (hu:=hu).
             * unfold leq_log in Hleq_log.
                 specialize Hleq_log with (e:=(New (Literal bs) (HMacKey hu))).
-                apply Hleq_log in l0. assumption.
-            * destruct o as [oleft | oright].
+                apply Hleq_log in H. assumption.
+            * destruct H0 as [H0left | H0right].
                 + left. assumption.
-                + right. intro Hllow. apply oright in Hllow.
+                + right. intro Hllow. apply H0right in Hllow.
                     assert ( Hstable : Stable (hmacComp (Literal bs)) ). apply hmacComp_Stable. 
                     unfold Stable in Hstable. specialize Hstable with (L:=L) (L':=L').
                     apply Hstable ; assumption.
         - apply Level_SEncKey with (su:=su). 
             * unfold leq_log in Hleq_log.
                 specialize Hleq_log with (e:=(New (Literal bs) (SEncKey su))).
-                apply Hleq_log in l0. assumption.
-            * destruct o as [oleft | oright].
+                apply Hleq_log in H. assumption.
+            * destruct H0 as [H0left | H0right].
                 + left. assumption.
-                + right. intro Hllow. apply oright in Hllow.
+                + right. intro Hllow. apply H0right in Hllow.
                     assert ( Hstable : Stable (sencComp (Literal bs)) ). apply sencComp_Stable.
                     unfold Stable in Hstable. specialize Hstable with (L:=L) (L':=L').
                     apply Hstable ; assumption.
         - apply Level_SigKey with (su:=su).
             * unfold leq_log in Hleq_log.
                 specialize Hleq_log with (e:=(New (Literal bs) (SignKey su))).
-                apply Hleq_log in l0. assumption.
-            * destruct o as [oleft | oright].
+                apply Hleq_log in H. assumption.
+            * destruct H0 as [H0left | H0right].
                 + left. assumption.
-                + right. intro Hllow. apply oright in Hllow.
+                + right. intro Hllow. apply H0right in Hllow.
                     assert ( Hstable : Stable (sigComp (Literal bs)) ). apply sigComp_Stable.
                     unfold Stable in Hstable. specialize Hstable with (L:=L) (L':=L').
                     apply Hstable ; assumption.
         - apply Level_VerKey with (su:=su). unfold leq_log in Hleq_log.
             specialize Hleq_log with (e:=(New (Literal bs) (VerfKey su))).
-            apply Hleq_log in l0. assumption.
+            apply Hleq_log in H. assumption.
         - apply Level_EncKey with (eu:=eu). unfold leq_log in Hleq_log.
             specialize Hleq_log with (e:=(New (Literal bs) (EncKey eu))).
-            apply Hleq_log in l0. assumption.
+            apply Hleq_log in H. assumption.
         - apply Level_DecKey with (eu:=eu).
             * unfold leq_log in Hleq_log.
                 specialize Hleq_log with (e:=(New (Literal bs) (DecKey eu))).
-                apply Hleq_log in l0. assumption.
-            * destruct o as [oleft | oright].
+                apply Hleq_log in H. assumption.
+            * destruct H0 as [H0left | H0right].
                 + left. assumption.
-                + right. intro Hllow. apply oright in Hllow.
+                + right. intro Hllow. apply H0right in Hllow.
                     assert ( Hstable : Stable (encComp (Literal bs)) ). apply encComp_Stable.
                     unfold Stable in Hstable. specialize Hstable with (L:=L) (L':=L').
                     apply Hstable ; assumption.
@@ -313,4 +315,21 @@ Module Levels (PD: ProtocolDefs).
             * apply IHHlevelL1. assumption.
             * apply IHHlevelL2. assumption.  
     Qed.
+
+    (* Generic Invariants: Level inversion. *)
+    Theorem LowHmacKeyLiteral_Inversion : forall L k hu,
+        WF_Log L ->
+        Logged (New (Literal k) (HMacKey hu)) L ->
+        Level Low (Literal k) L ->
+        hmacComp (Literal k) L.
+    Proof. 
+        intros L k hu. intros HWfLog Hlog Hlevel. 
+    Admitted.
+
+    Theorem HMac_Inversion : forall L l k p,
+        Level l (HMac k p) L ->
+        canHmac k p L \/ Level Low k L.
+    Proof.
+        intros L l k p. intro Hlevel.
+    Admitted.
 End Levels.
