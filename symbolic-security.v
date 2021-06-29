@@ -227,4 +227,90 @@ Module Levels (PD: ProtocolDefs).
         - apply Level_SEnc with (l':=l') ; assumption.
         - apply Level_SEnc_Low ; assumption. 
     Qed.
+
+    Theorem Level_Stable: forall l t L L',
+        leq_log L L' -> Level l t L ->
+        Level l t L'.
+    Proof.
+        intros l t L L' Hleq_log HlevelL.
+        induction HlevelL.
+        - apply Level_AdversaryGuess. unfold leq_log in Hleq_log.
+            specialize Hleq_log with (e:=(New (Literal bs) AdversaryGuess)).
+            apply Hleq_log in l0. assumption.
+        - apply Level_Nonce with (nu:=nu). 
+            * unfold leq_log in Hleq_log.
+                specialize Hleq_log with (e:=(New (Literal bs) (Nonce nu))).
+                apply Hleq_log in l0. assumption.
+            * destruct o as [oleft | oright].
+                + left. assumption.
+                + right. intro Hllow. apply oright in Hllow. 
+                    assert ( Hstable : Stable (nonceComp (Literal bs)) ). apply nonceComp_Stable.
+                    unfold Stable in Hstable. specialize Hstable with (L:=L) (L':=L').
+                    apply Hstable ; assumption.
+        - apply Level_HMacKey with (hu:=hu).
+            * unfold leq_log in Hleq_log.
+                specialize Hleq_log with (e:=(New (Literal bs) (HMacKey hu))).
+                apply Hleq_log in l0. assumption.
+            * destruct o as [oleft | oright].
+                + left. assumption.
+                + right. intro Hllow. apply oright in Hllow.
+                    assert ( Hstable : Stable (hmacComp (Literal bs)) ). apply hmacComp_Stable. 
+                    unfold Stable in Hstable. specialize Hstable with (L:=L) (L':=L').
+                    apply Hstable ; assumption.
+        - apply Level_SEncKey with (su:=su). 
+            * unfold leq_log in Hleq_log.
+                specialize Hleq_log with (e:=(New (Literal bs) (SEncKey su))).
+                apply Hleq_log in l0. assumption.
+            * destruct o as [oleft | oright].
+                + left. assumption.
+                + right. intro Hllow. apply oright in Hllow.
+                    assert ( Hstable : Stable (sencComp (Literal bs)) ). apply sencComp_Stable.
+                    unfold Stable in Hstable. specialize Hstable with (L:=L) (L':=L').
+                    apply Hstable ; assumption.
+        - apply Level_SigKey with (su:=su).
+            * unfold leq_log in Hleq_log.
+                specialize Hleq_log with (e:=(New (Literal bs) (SignKey su))).
+                apply Hleq_log in l0. assumption.
+            * destruct o as [oleft | oright].
+                + left. assumption.
+                + right. intro Hllow. apply oright in Hllow.
+                    assert ( Hstable : Stable (sigComp (Literal bs)) ). apply sigComp_Stable.
+                    unfold Stable in Hstable. specialize Hstable with (L:=L) (L':=L').
+                    apply Hstable ; assumption.
+        - apply Level_VerKey with (su:=su). unfold leq_log in Hleq_log.
+            specialize Hleq_log with (e:=(New (Literal bs) (VerfKey su))).
+            apply Hleq_log in l0. assumption.
+        - apply Level_EncKey with (eu:=eu). unfold leq_log in Hleq_log.
+            specialize Hleq_log with (e:=(New (Literal bs) (EncKey eu))).
+            apply Hleq_log in l0. assumption.
+        - apply Level_DecKey with (eu:=eu).
+            * unfold leq_log in Hleq_log.
+                specialize Hleq_log with (e:=(New (Literal bs) (DecKey eu))).
+                apply Hleq_log in l0. assumption.
+            * destruct o as [oleft | oright].
+                + left. assumption.
+                + right. intro Hllow. apply oright in Hllow.
+                    assert ( Hstable : Stable (encComp (Literal bs)) ). apply encComp_Stable.
+                    unfold Stable in Hstable. specialize Hstable with (L:=L) (L':=L').
+                    apply Hstable ; assumption.
+        - apply Level_Pair.
+            * apply IHHlevelL1. assumption.  
+            * apply IHHlevelL2. assumption.
+        - apply Level_HMac.
+            * assert ( Hstable : Stable (canHmac k m) ). apply canHmac_Stable.
+                unfold Stable in Hstable. specialize Hstable with (L:=L) (L':=L').
+                apply Hstable ; assumption.
+            * apply IHHlevelL. assumption.
+        - apply Level_HMac_Low.
+            * apply IHHlevelL1. assumption.
+            * apply IHHlevelL2. assumption.
+        - apply Level_SEnc with (l':=l').
+            * assert ( Hstable : Stable (canSEnc k p) ). apply canSEnc_Stable.
+                unfold Stable in Hstable. specialize Hstable with (L:=L) (L':=L').
+                apply Hstable ; assumption.
+            * apply IHHlevelL. assumption.
+        - apply Level_SEnc_Low.
+            * apply IHHlevelL1. assumption.
+            * apply IHHlevelL2. assumption.  
+    Qed.
 End Levels.
