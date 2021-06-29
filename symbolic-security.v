@@ -368,10 +368,19 @@ Module CryptographicInvariants (PD: ProtocolDefs).
         Logged (New t u') L ->
         P.
     Proof.
-
+        intros P L t u u'. intros HGoodLog Hu_not_u' HlogU HlogU'.
     Admitted.
 
     (* Generic Invariants: Level inversion. *)
+    Theorem LowNonce_Inversion : forall L n nu,
+        GoodLog L ->
+        Logged (New (Literal n) (Nonce nu)) L ->
+        Level Low (Literal n) L ->
+        nonceComp (Literal n) L.
+    Proof.
+        intros L n nu. intros HGoodLog Hlog Hlevel.
+    Admitted.
+
     Theorem LowHmacKeyLiteral_Inversion : forall L k hu,
         GoodLog L ->
         Logged (New (Literal k) (HMacKey hu)) L ->
@@ -384,6 +393,27 @@ Module CryptographicInvariants (PD: ProtocolDefs).
     Theorem HMac_Inversion : forall L l k p,
         Level l (HMac k p) L ->
         canHmac k p L \/ Level Low k L.
+    Proof.
+        intros L l k p. intro Hlevel.
+    Admitted.
+
+    Theorem SEnc_Inversion : forall L l k p,
+        Level l (SEnc k p) L ->
+        canSEnc k p L \/ Level Low k L.
+    Proof.
+        intros L l k p. intro Hlevel.
+    Admitted.
+
+    Theorem Sign_Inversion : forall L l k p,
+        Level l (Sign k p) L ->
+        canSign k p L \/ Level Low k L.
+    Proof.
+        intros L l k p. intro Hlevel.
+    Admitted.
+
+    Theorem Enc_Inversion : forall L l k p,
+        Level l (Sign k p) L ->
+        (canEnc k p L /\ Level High p L) \/ Level Low k L.
     Proof.
         intros L l k p. intro Hlevel.
     Admitted.
