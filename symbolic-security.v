@@ -369,7 +369,13 @@ Module CryptographicInvariants (PD: ProtocolDefs).
         P.
     Proof.
         intros P L t u u'. intros HGoodLog Hu_not_u' HlogU HlogU'.
-    Admitted.
+        unfold GoodLog in HGoodLog. destruct HGoodLog as (HGL_WfLog & HGL_LogInv).
+        unfold WF_Log in HGL_WfLog. destruct HGL_WfLog as (HGL_WL_Usage & HGL_WL_Keys).
+        specialize HGL_WL_Usage with (t:=t) (u:=u) (u':=u').
+        apply HGL_WL_Usage in HlogU.
+        - exfalso. tauto.
+        - assumption.
+    Qed.
 
     (* Generic Invariants: Level inversion. *)
     Theorem LowNonce_Inversion : forall L n nu,
