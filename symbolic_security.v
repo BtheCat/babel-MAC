@@ -238,23 +238,13 @@ Module CryptographicInvariants (PD: ProtocolDefs).
         intros t L. intro Hlow.
         induction Hlow.
         - apply Level_AdversaryGuess. assumption.
-        - apply Level_Nonce with (nu:=nu).
-            * assumption.
-            * left. tauto.
-        - apply Level_HMacKey with (hu:=hu). 
-            * assumption.
-            * left. tauto.
-        - apply Level_SEncKey with (su:=su).
-            * assumption.
-            * left. tauto.
-        - apply Level_SigKey with (su:=su).
-            * assumption.
-            * left. tauto.
+        - apply Level_Nonce with (nu:=nu) ; try assumption. left. tauto.
+        - apply Level_HMacKey with (hu:=hu) ; try assumption. left. tauto.
+        - apply Level_SEncKey with (su:=su) ; try assumption. left. tauto.
+        - apply Level_SigKey with (su:=su) ; try assumption. left. tauto.
         - apply Level_VerKey with (su:=su). assumption.
         - apply Level_EncKey with (eu:=eu). assumption.
-        - apply Level_DecKey with (eu:=eu).
-            * assumption.
-            * left. tauto.
+        - apply Level_DecKey with (eu:=eu) ; try assumption. left. tauto.
         - apply Level_Pair ; assumption.
         - apply Level_HMac ; assumption.
         - apply Level_HMac_Low ; assumption.
@@ -274,99 +264,54 @@ Module CryptographicInvariants (PD: ProtocolDefs).
         intros l t L L'. intros Hleq_log HlevelL.
         induction HlevelL.
         - apply Level_AdversaryGuess. unfold leq_log in Hleq_log.
-            specialize Hleq_log with (e:=(New (Literal bs) AdversaryGuess)).
-            apply Hleq_log in H. assumption.
+            specialize Hleq_log with (e:=(New (Literal bs) AdversaryGuess)). auto.
         - apply Level_Nonce with (nu:=nu). 
             * unfold leq_log in Hleq_log.
-                specialize Hleq_log with (e:=(New (Literal bs) (Nonce nu))).
-                apply Hleq_log in H. assumption.
-            * destruct H0 as [H0left | H0right].
-                + left. assumption.
-                + right. intro Hllow. apply H0right in Hllow. 
-                    assert ( Hstable : Stable (nonceComp (Literal bs)) ). apply nonceComp_Stable.
-                    unfold Stable in Hstable. specialize Hstable with (L:=L) (L':=L').
-                    apply Hstable ; assumption.
+                specialize Hleq_log with (e:=(New (Literal bs) (Nonce nu))). auto.
+            * destruct H0 as [H0left | H0right] ; try auto.
+                right. intro Hllow. apply H0right in Hllow. 
+                assert ( Hstable : Stable (nonceComp (Literal bs)) ). apply nonceComp_Stable. firstorder.
         - apply Level_HMacKey with (hu:=hu).
             * unfold leq_log in Hleq_log.
-                specialize Hleq_log with (e:=(New (Literal bs) (HMacKey hu))).
-                apply Hleq_log in H. assumption.
-            * destruct H0 as [H0left | H0right].
-                + left. assumption.
-                + right. intro Hllow. apply H0right in Hllow.
-                    assert ( Hstable : Stable (hmacComp (Literal bs)) ). apply hmacComp_Stable. 
-                    unfold Stable in Hstable. specialize Hstable with (L:=L) (L':=L').
-                    apply Hstable ; assumption.
+                specialize Hleq_log with (e:=(New (Literal bs) (HMacKey hu))). auto.
+            * destruct H0 as [H0left | H0right] ; try auto.
+                right. intro Hllow. apply H0right in Hllow.
+                assert ( Hstable : Stable (hmacComp (Literal bs)) ). apply hmacComp_Stable. firstorder.
         - apply Level_SEncKey with (su:=su). 
             * unfold leq_log in Hleq_log.
-                specialize Hleq_log with (e:=(New (Literal bs) (SEncKey su))).
-                apply Hleq_log in H. assumption.
-            * destruct H0 as [H0left | H0right].
-                + left. assumption.
-                + right. intro Hllow. apply H0right in Hllow.
-                    assert ( Hstable : Stable (sencComp (Literal bs)) ). apply sencComp_Stable.
-                    unfold Stable in Hstable. specialize Hstable with (L:=L) (L':=L').
-                    apply Hstable ; assumption.
+                specialize Hleq_log with (e:=(New (Literal bs) (SEncKey su))). auto.
+            * destruct H0 as [H0left | H0right] ; try auto.
+                right. intro Hllow. apply H0right in Hllow.
+                assert ( Hstable : Stable (sencComp (Literal bs)) ). apply sencComp_Stable. firstorder.
         - apply Level_SigKey with (su:=su).
             * unfold leq_log in Hleq_log.
-                specialize Hleq_log with (e:=(New (Literal bs) (SignKey su))).
-                apply Hleq_log in H. assumption.
-            * destruct H0 as [H0left | H0right].
-                + left. assumption.
-                + right. intro Hllow. apply H0right in Hllow.
-                    assert ( Hstable : Stable (sigComp (Literal bs)) ). apply sigComp_Stable.
-                    unfold Stable in Hstable. specialize Hstable with (L:=L) (L':=L').
-                    apply Hstable ; assumption.
+                specialize Hleq_log with (e:=(New (Literal bs) (SignKey su))). auto.
+            * destruct H0 as [H0left | H0right] ; try auto.
+                right. intro Hllow. apply H0right in Hllow.
+                assert ( Hstable : Stable (sigComp (Literal bs)) ). apply sigComp_Stable. firstorder.
         - apply Level_VerKey with (su:=su). unfold leq_log in Hleq_log.
-            specialize Hleq_log with (e:=(New (Literal bs) (VerfKey su))).
-            apply Hleq_log in H. assumption.
+            specialize Hleq_log with (e:=(New (Literal bs) (VerfKey su))). auto.
         - apply Level_EncKey with (eu:=eu). unfold leq_log in Hleq_log.
-            specialize Hleq_log with (e:=(New (Literal bs) (EncKey eu))).
-            apply Hleq_log in H. assumption.
+            specialize Hleq_log with (e:=(New (Literal bs) (EncKey eu))). auto.
         - apply Level_DecKey with (eu:=eu).
             * unfold leq_log in Hleq_log.
-                specialize Hleq_log with (e:=(New (Literal bs) (DecKey eu))).
-                apply Hleq_log in H. assumption.
-            * destruct H0 as [H0left | H0right].
-                + left. assumption.
-                + right. intro Hllow. apply H0right in Hllow.
-                    assert ( Hstable : Stable (encComp (Literal bs)) ). apply encComp_Stable.
-                    unfold Stable in Hstable. specialize Hstable with (L:=L) (L':=L').
-                    apply Hstable ; assumption.
-        - apply Level_Pair.
-            * apply IHHlevelL1. assumption.  
-            * apply IHHlevelL2. assumption.
-        - apply Level_HMac.
-            * assert ( Hstable : Stable (canHmac k m) ). apply canHmac_Stable.
-                unfold Stable in Hstable. specialize Hstable with (L:=L) (L':=L').
-                apply Hstable ; assumption.
-            * apply IHHlevelL. assumption.
-        - apply Level_HMac_Low.
-            * apply IHHlevelL1. assumption.
-            * apply IHHlevelL2. assumption.
-        - apply Level_SEnc with (l':=l').
-            * assert ( Hstable : Stable (canSEnc k p) ). apply canSEnc_Stable.
-                unfold Stable in Hstable. specialize Hstable with (L:=L) (L':=L').
-                apply Hstable ; assumption.
-            * apply IHHlevelL. assumption.
-        - apply Level_SEnc_Low.
-            * apply IHHlevelL1. assumption.
-            * apply IHHlevelL2. assumption. 
-        - apply Level_Sig.
-            * assert ( Hstable : Stable (canSign k m) ). apply canSign_Stable. 
-                unfold Stable in Hstable. specialize Hstable with (L:=L) (L':=L').
-                apply Hstable ; assumption.
-            * apply IHHlevelL. assumption.
-        - apply Level_Sig_Low.
-            * apply IHHlevelL1. assumption.
-            * apply IHHlevelL2. assumption.
-        - apply Level_Enc.
-            * assert ( Hstable : Stable (canEnc k p) ). apply canEnc_Stable.
-                unfold Stable in Hstable. specialize Hstable with (L:=L) (L':=L').
-                apply Hstable ; assumption.
-            * apply IHHlevelL. assumption.
-        - apply Level_Enc_Low.
-            * apply IHHlevelL1. assumption.
-            * apply IHHlevelL2. assumption.
+                specialize Hleq_log with (e:=(New (Literal bs) (DecKey eu))). auto.
+            * destruct H0 as [H0left | H0right] ; try auto.
+                right. intro Hllow. apply H0right in Hllow.
+                assert ( Hstable : Stable (encComp (Literal bs)) ). apply encComp_Stable. firstorder.
+        - apply Level_Pair ; firstorder.
+        - apply Level_HMac ; try auto.
+            assert ( Hstable : Stable (canHmac k m) ). apply canHmac_Stable. firstorder.
+        - apply Level_HMac_Low ; firstorder.
+        - apply Level_SEnc with (l':=l') ; try auto.
+            assert ( Hstable : Stable (canSEnc k p) ). apply canSEnc_Stable. firstorder.
+        - apply Level_SEnc_Low ; firstorder.
+        - apply Level_Sig ; try auto.
+            * assert ( Hstable : Stable (canSign k m) ). apply canSign_Stable. firstorder. 
+        - apply Level_Sig_Low ; firstorder.
+        - apply Level_Enc ; try auto.
+            assert ( Hstable : Stable (canEnc k p) ). apply canEnc_Stable. firstorder.
+        - apply Level_Enc_Low ; firstorder.
     Qed.
 
     (* Generic Invariants: Distinct usages are absurd *)
@@ -381,9 +326,8 @@ Module CryptographicInvariants (PD: ProtocolDefs).
         unfold GoodLog in HGoodLog. destruct HGoodLog as (HGL_WfLog & HGL_LogInv).
         unfold WF_Log in HGL_WfLog. destruct HGL_WfLog as (HGL_WL_Usage & HGL_WL_Keys).
         specialize HGL_WL_Usage with (t:=t) (u:=u) (u':=u').
-        apply HGL_WL_Usage in HlogU.
-        - exfalso. tauto.
-        - assumption.
+        apply HGL_WL_Usage in HlogU ; try auto.
+        exfalso. tauto.
     Qed.
 
     (* Generic Invariants: Level inversion. *)
@@ -561,3 +505,4 @@ Module RPCInvariants <: ProtocolInvariants RPCDefs.
         firstorder.
     Qed.
 End RPCInvariants.
+
