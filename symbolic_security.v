@@ -1,4 +1,5 @@
 Require Import String.
+Require Import Ascii.
 Require Import ListSet.
 
 (* Symbolic models in cryptography *)
@@ -131,6 +132,14 @@ Module CryptographicInvariants (PD: ProtocolDefs).
     Definition GoodLog (L: log): Prop :=
         WF_Log L /\ LogInvariant L.
 
+    (*
+        Level predicates indicate how cryptography can be used by honest or dishonest protocol participants.
+        We say that a term t is Low in log L (denotate Level Low t L) whenever it may be made known to the adversary 
+            without compromising the protocol's security objectives.
+        We say that a term t is High in log L whenever it can be derivated by any honest or dishonest protocol participant 
+            (including the adversary).
+        Intuitively, a term is truly secret if it is not Low in the current Log
+    *)
     Inductive level := Low | High.
     Inductive Level: level -> term -> log -> Prop :=
         (* AdversaryGuesses are always Low *)
@@ -385,6 +394,8 @@ Module CryptographicInvariants (PD: ProtocolDefs).
         nonceComp (Literal n) L.
     Proof.
         intros L n nu. intros HGoodLog Hlog Hlevel.
+        unfold GoodLog in HGoodLog. destruct HGoodLog as (HGL_WfLog & HGL_LogInv).
+        
     Admitted.
 
     Theorem LowHmacKeyLiteral_Inversion : forall L k hu,
@@ -401,6 +412,7 @@ Module CryptographicInvariants (PD: ProtocolDefs).
         canHmac k p L \/ Level Low k L.
     Proof.
         intros L l k p. intro Hlevel.
+                 
     Admitted.
 
     Theorem SEnc_Inversion : forall L l k p,
@@ -424,3 +436,128 @@ Module CryptographicInvariants (PD: ProtocolDefs).
         intros L l k p. intro Hlevel.
     Admitted.
 End CryptographicInvariants.
+
+Module RPCDefs <: ProtocolDefs.
+    Parameter TagRequest: ascii.
+    Parameter TagResponse: ascii.
+    Parameter TagsDistinct: TagRequest <> TagResponse.
+
+    Definition nonce_usage := False.
+    Definition senc_usage := False.
+    Definition sign_usage := False.
+    Definition enc_usage := False.
+
+    Inductive hmac_usage' :=
+        | U_KeyAB (a b: term).
+    Definition hmac_usage := hmac_usage'.
+
+    Inductive pEvent' :=
+        | Request (a b req: term)
+        | Response (a b req resp: term)
+        | Bad (p: term).
+    Definition pEvent := pEvent'.
+End RPCDefs.
+
+Module RPCInvariants <: ProtocolInvariants RPCDefs.
+    Import RPCDefs.
+    Include Defs RPCDefs.
+    
+    (* A-RPC: Log Invariant *)
+    Definition LogInvariant L :=
+        forall t u, Logged (New t u) L -> (exists bs, t = Literal bs).
+
+    (* A-RPC: Key usage test *)
+    Definition KeyAB a b k L :=
+        Logged (New k (HMacKey (U_KeyAB a b))) L.
+
+    (* A-RPC: Release Condition *)
+    Definition KeyABComp a b L :=
+        LoggedP (Bad a) L \/ LoggedP (Bad b) L.
+
+    Definition hmacComp k L :=
+        exists a, exists b, KeyAB a b k L /\ KeyABComp a b L.
+
+    Theorem hmacComp_Stable':
+        forall t, Stable (hmacComp t).
+    Proof.
+        intro t. unfold Stable. intros L L'. 
+        unfold leq_log. unfold hmacComp. unfold KeyAB. unfold KeyABComp. unfold LoggedP.
+        firstorder.
+    Qed.
+    Definition hmacComp_Stable := hmacComp_Stable'.
+
+    (* A-RPC: Payload Condition *)
+    Definition KeyABPayload a b p L :=
+        (exists req,
+            p = Pair (Literal (String TagRequest EmptyString)) req /\
+            LoggedP (Request a b req) L) \/
+        (exists req, exists resp,
+            p = Pair (Literal (String TagResponse EmptyString)) (Pair req resp) /\
+            LoggedP (Response a b req resp) L).
+
+    Definition canHmac k p L :=
+        exists a, exists b, KeyAB a b k L /\ KeyABPayload a b p L.
+
+    Theorem canHmac_Stable':
+        forall k p, Stable (canHmac k p).
+    Proof.
+        intros k p. unfold Stable. intros L L'.
+        unfold leq_log. unfold canHmac. unfold KeyAB. unfold KeyABPayload. unfold LoggedP.
+        intros Hleq_log HcanHmacL.
+        destruct HcanHmacL as (a, HcanHmacLa). destruct HcanHmacLa as (b, HcanHmacLab).
+        destruct HcanHmacLab as (HcanHmacLab_l & HcanHmacLab_r). 
+        exists a. exists b. split ; firstorder.
+    Qed.
+    Definition canHmac_Stable := canHmac_Stable'.
+
+    (* For the authenticated RPC protocol, all other usage conditions are trivially False. *)
+    Definition nonceComp (_: term) (_: log) := False.
+    Definition sencComp (_: term) (_: log) := False.
+    Definition canSEnc (_ _: term) (_: log) := False.
+    Definition sigComp (_: term) (_: log) := False.
+    Definition canSign (_ _: term) (_: log) := False.
+    Definition encComp (_: term) (_: log) := False.
+    Definition canEnc (_ _: term) (_: log) := False.
+
+    Theorem nonceComp_Stable: 
+        forall t, Stable (nonceComp t).
+    Proof. 
+        firstorder.
+    Qed.
+
+    Theorem sencComp_Stable: 
+        forall t, Stable (sencComp t).
+    Proof. 
+        firstorder. 
+    Qed.
+
+    Theorem canSEnc_Stable:
+        forall k p, Stable (canSEnc k p).
+    Proof.
+        firstorder.
+    Qed.
+
+    Theorem sigComp_Stable:
+        forall t, Stable (sigComp t).
+    Proof.
+        firstorder.
+    Qed. 
+
+    Theorem canSign_Stable:
+        forall k p, Stable (canSign k p).
+    Proof.
+        firstorder.
+    Qed.
+
+    Theorem encComp_Stable:
+        forall t, Stable (encComp t).
+    Proof.
+        firstorder.
+    Qed. 
+
+    Theorem canEnc_Stable:
+        forall k p, Stable (canEnc k p).
+    Proof.
+        firstorder.
+    Qed.
+End RPCInvariants.
