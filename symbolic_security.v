@@ -272,22 +272,22 @@ Module CryptographicInvariants (PD: ProtocolDefs) (PI: ProtocolInvariants PD).
         (* Nonces are Low when nonceComp holds *)
         | Level_Nonce: forall l bs L nu,
             Logged (New (Literal bs) (Nonce nu)) L ->
-            (l = High \/ (l = Low -> nonceComp (Literal bs) L)) ->
+            (l = Low -> nonceComp (Literal bs) L) ->
             Level l (Literal bs) L 
         (* HMacKeys are Low when hmacComp holds *)
         | Level_HMacKey: forall l bs L hu,
             Logged (New (Literal bs) (HMacKey hu)) L ->
-            (l = High \/ (l = Low -> hmacComp (Literal bs) L)) ->
+            (l = Low -> hmacComp (Literal bs) L) ->
             Level l (Literal bs) L 
         (* SEncKeys are Low when sencComp holds *)
         | Level_SEncKey: forall l bs L su,
             Logged (New (Literal bs) (SEncKey su)) L ->
-            (l = High \/ (l = Low -> sencComp (Literal bs) L)) ->
+            (l = Low -> sencComp (Literal bs) L) ->
             Level l (Literal bs) L 
         (* SigKeys are Low when sigComp holds *)
         | Level_SigKey: forall l bs L su,
             Logged (New (Literal bs) (SignKey su)) L ->
-            (l = High \/ (l = Low -> sigComp (Literal bs) L)) ->
+            (l = Low -> sigComp (Literal bs) L) ->
             Level l (Literal bs) L 
         (* VerfKeys are always Low *)
         | Level_VerKey: forall l bs L su,
@@ -300,7 +300,7 @@ Module CryptographicInvariants (PD: ProtocolDefs) (PI: ProtocolInvariants PD).
         (* DecKeys are Low when encComp holds *)
         | Level_DecKey: forall l bs L eu,
             Logged (New (Literal bs) (DecKey eu)) L ->
-            (l = High \/ (l = Low -> encComp (Literal bs) L)) ->
+            (l = Low -> encComp (Literal bs) L) ->
             Level l (Literal bs) L 
 
         (* Paris are as Low as their components *)
@@ -360,13 +360,13 @@ Module CryptographicInvariants (PD: ProtocolDefs) (PI: ProtocolInvariants PD).
         intros t L. intro Hlow.
         induction Hlow.
         - apply Level_AdversaryGuess. assumption.
-        - apply Level_Nonce with (nu:=nu) ; try assumption. left. tauto.
-        - apply Level_HMacKey with (hu:=hu) ; try assumption. left. tauto.
-        - apply Level_SEncKey with (su:=su) ; try assumption. left. tauto.
-        - apply Level_SigKey with (su:=su) ; try assumption. left. tauto.
+        - apply Level_Nonce with (nu:=nu) ; try assumption. easy. 
+        - apply Level_HMacKey with (hu:=hu) ; try assumption. easy.
+        - apply Level_SEncKey with (su:=su) ; try assumption. easy.
+        - apply Level_SigKey with (su:=su) ; try assumption. easy.
         - apply Level_VerKey with (su:=su). assumption.
         - apply Level_EncKey with (eu:=eu). assumption.
-        - apply Level_DecKey with (eu:=eu) ; try assumption. left. tauto.
+        - apply Level_DecKey with (eu:=eu) ; try assumption. easy.
         - apply Level_Pair ; assumption.
         - apply Level_HMac ; assumption.
         - apply Level_HMac_Low ; assumption.
@@ -390,26 +390,22 @@ Module CryptographicInvariants (PD: ProtocolDefs) (PI: ProtocolInvariants PD).
         - apply Level_Nonce with (nu:=nu). 
             * unfold leq_log in Hleq_log.
                 specialize Hleq_log with (e:=(New (Literal bs) (Nonce nu))). auto.
-            * destruct H0 as [H0left | H0right] ; try auto.
-                right. intro Hllow. apply H0right in Hllow. 
+            * intro Hllow. apply H0 in Hllow. 
                 assert ( Hstable : Stable (nonceComp (Literal bs)) ). apply nonceComp_Stable. firstorder.
         - apply Level_HMacKey with (hu:=hu).
             * unfold leq_log in Hleq_log.
                 specialize Hleq_log with (e:=(New (Literal bs) (HMacKey hu))). auto.
-            * destruct H0 as [H0left | H0right] ; try auto.
-                right. intro Hllow. apply H0right in Hllow.
+            * intro Hllow. apply H0 in Hllow.
                 assert ( Hstable : Stable (hmacComp (Literal bs)) ). apply hmacComp_Stable. firstorder.
         - apply Level_SEncKey with (su:=su). 
             * unfold leq_log in Hleq_log.
                 specialize Hleq_log with (e:=(New (Literal bs) (SEncKey su))). auto.
-            * destruct H0 as [H0left | H0right] ; try auto.
-                right. intro Hllow. apply H0right in Hllow.
+            * intro Hllow. apply H0 in Hllow.
                 assert ( Hstable : Stable (sencComp (Literal bs)) ). apply sencComp_Stable. firstorder.
         - apply Level_SigKey with (su:=su).
             * unfold leq_log in Hleq_log.
                 specialize Hleq_log with (e:=(New (Literal bs) (SignKey su))). auto.
-            * destruct H0 as [H0left | H0right] ; try auto.
-                right. intro Hllow. apply H0right in Hllow.
+            * intro Hllow. apply H0 in Hllow.
                 assert ( Hstable : Stable (sigComp (Literal bs)) ). apply sigComp_Stable. firstorder.
         - apply Level_VerKey with (su:=su). unfold leq_log in Hleq_log.
             specialize Hleq_log with (e:=(New (Literal bs) (VerfKey su))). auto.
@@ -418,8 +414,7 @@ Module CryptographicInvariants (PD: ProtocolDefs) (PI: ProtocolInvariants PD).
         - apply Level_DecKey with (eu:=eu).
             * unfold leq_log in Hleq_log.
                 specialize Hleq_log with (e:=(New (Literal bs) (DecKey eu))). auto.
-            * destruct H0 as [H0left | H0right] ; try auto.
-                right. intro Hllow. apply H0right in Hllow.
+            * intro Hllow. apply H0 in Hllow.
                 assert ( Hstable : Stable (encComp (Literal bs)) ). apply encComp_Stable. firstorder.
         - apply Level_Pair ; firstorder.
         - apply Level_HMac ; try auto.
@@ -452,8 +447,6 @@ Module CryptographicInvariants (PD: ProtocolDefs) (PI: ProtocolInvariants PD).
         exfalso. tauto.
     Qed.
 
-    Axiom AdvNonceDistinct: forall nu, AdversaryGuess <> Nonce nu.
-
     (* Generic Invariants: Level inversion. *)
     Theorem LowNonce_Inversion : forall L n nu,
         GoodLog L ->
@@ -467,7 +460,20 @@ Module CryptographicInvariants (PD: ProtocolDefs) (PI: ProtocolInvariants PD).
         induction Hlevel. 
         - exfalso. specialize HGL_WL_Usage with (t:=Literal bs) (u:=Nonce nu) (u':=AdversaryGuess).
             apply HGL_WL_Usage in Hlog ; try assumption. discriminate. 
-        - 
+        - firstorder.
+        - exfalso. specialize HGL_WL_Usage with (t:=Literal bs) (u:=Nonce nu) (u':=HMacKey hu).
+            apply HGL_WL_Usage in Hlog ; try assumption. discriminate.
+        - exfalso. specialize HGL_WL_Usage with (t:=Literal bs) (u:=Nonce nu) (u':=SEncKey su).
+            apply HGL_WL_Usage in Hlog ; try assumption. discriminate.
+        - exfalso. specialize HGL_WL_Usage with (t:=Literal bs) (u:=Nonce nu) (u':=SignKey su).
+            apply HGL_WL_Usage in Hlog ; try assumption. discriminate.
+        - exfalso. specialize HGL_WL_Usage with (t:=Literal bs) (u:=Nonce nu) (u':=VerfKey su).
+            apply HGL_WL_Usage in Hlog ; try assumption. discriminate.
+        - exfalso. specialize HGL_WL_Usage with (t:=Literal bs) (u:=Nonce nu) (u':=EncKey eu).
+            apply HGL_WL_Usage in Hlog ; try assumption. discriminate.
+        - exfalso. specialize HGL_WL_Usage with (t:=Literal bs) (u:=Nonce nu) (u':=DecKey eu).
+            apply HGL_WL_Usage in Hlog ; try assumption. discriminate.
+        -  
     Admitted.
 
     Theorem LowHmacKeyLiteral_Inversion : forall L k hu,
