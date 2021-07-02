@@ -451,88 +451,125 @@ Module CryptographicInvariants (PD: ProtocolDefs) (PI: ProtocolInvariants PD).
     Theorem LowNonce_Inversion : forall L n nu,
         GoodLog L ->
         Logged (New (Literal n) (Nonce nu)) L ->
-        forall l, l = Low -> Level l (Literal n) L ->
+        forall l t, l = Low -> t = Literal n -> Level l t L ->
         nonceComp (Literal n) L.
     Proof.
-        intros L n nu. intros HGoodLog Hlog. intro l. intros Hlow Hlevel.
+        intros L n nu. intros HGoodLog Hlog. intros l t. intros Hlow HLit Hlevel. symmetry in HLit.
         unfold GoodLog in HGoodLog. destruct HGoodLog as (HGL_WfLog & HGL_LogInv).
         unfold WF_Log in HGL_WfLog. destruct HGL_WfLog as (HGL_WL_Usage & HGL_WL_Keys).
-        induction Hlevel. 
-        - exfalso. specialize HGL_WL_Usage with (t:=Literal bs) (u:=Nonce nu) (u':=AdversaryGuess).
-            apply HGL_WL_Usage in Hlog ; try assumption. discriminate. 
-        - firstorder.
-        - exfalso. specialize HGL_WL_Usage with (t:=Literal bs) (u:=Nonce nu) (u':=HMacKey hu).
-            apply HGL_WL_Usage in Hlog ; try assumption. discriminate.
-        - exfalso. specialize HGL_WL_Usage with (t:=Literal bs) (u:=Nonce nu) (u':=SEncKey su).
-            apply HGL_WL_Usage in Hlog ; try assumption. discriminate.
-        - exfalso. specialize HGL_WL_Usage with (t:=Literal bs) (u:=Nonce nu) (u':=SignKey su).
-            apply HGL_WL_Usage in Hlog ; try assumption. discriminate.
-        - exfalso. specialize HGL_WL_Usage with (t:=Literal bs) (u:=Nonce nu) (u':=VerfKey su).
-            apply HGL_WL_Usage in Hlog ; try assumption. discriminate.
-        - exfalso. specialize HGL_WL_Usage with (t:=Literal bs) (u:=Nonce nu) (u':=EncKey eu).
-            apply HGL_WL_Usage in Hlog ; try assumption. discriminate.
-        - exfalso. specialize HGL_WL_Usage with (t:=Literal bs) (u:=Nonce nu) (u':=DecKey eu).
-            apply HGL_WL_Usage in Hlog ; try assumption. discriminate.
-        - (* Je bloque ici, n'ayant pas de propriété entre nonceComp et Level_Pair *) 
-    Admitted.
+        induction Hlevel ; try discriminate. 
+        - exfalso. specialize HGL_WL_Usage with (t:=Literal n) (u:=Nonce nu) (u':=AdversaryGuess).
+            apply HGL_WL_Usage in Hlog ; try assumption. 
+            + discriminate. 
+            + rewrite HLit. assumption. 
+        - firstorder. rewrite HLit. assumption.
+        - exfalso. specialize HGL_WL_Usage with (t:=Literal n) (u:=Nonce nu) (u':=HMacKey hu).
+            apply HGL_WL_Usage in Hlog ; try assumption. 
+            + discriminate.
+            + rewrite HLit. assumption.
+        - exfalso. specialize HGL_WL_Usage with (t:=Literal n) (u:=Nonce nu) (u':=SEncKey su).
+            apply HGL_WL_Usage in Hlog ; try assumption. 
+            + discriminate.
+            + rewrite HLit. assumption.
+        - exfalso. specialize HGL_WL_Usage with (t:=Literal n) (u:=Nonce nu) (u':=SignKey su).
+            apply HGL_WL_Usage in Hlog ; try assumption. 
+            + discriminate.
+            + rewrite HLit. assumption.
+        - exfalso. specialize HGL_WL_Usage with (t:=Literal n) (u:=Nonce nu) (u':=VerfKey su).
+            apply HGL_WL_Usage in Hlog ; try assumption. 
+            + discriminate.
+            + rewrite HLit. assumption.
+        - exfalso. specialize HGL_WL_Usage with (t:=Literal n) (u:=Nonce nu) (u':=EncKey eu).
+            apply HGL_WL_Usage in Hlog ; try assumption. 
+            + discriminate.
+            + rewrite HLit. assumption.
+        - exfalso. specialize HGL_WL_Usage with (t:=Literal n) (u:=Nonce nu) (u':=DecKey eu).
+            apply HGL_WL_Usage in Hlog ; try assumption. 
+            + discriminate.
+            + rewrite HLit. assumption.  
+    Qed.
 
     Theorem LowHmacKeyLiteral_Inversion : forall L k hu,
         GoodLog L ->
         Logged (New (Literal k) (HMacKey hu)) L ->
-        forall l, l = Low -> Level l (Literal k) L ->
+        forall l t, l = Low -> t = Literal k -> Level l t L ->
         hmacComp (Literal k) L.
     Proof. 
-        intros L k hu. intros HGoodLog Hlog. intro l. intros Hlow Hlevel.
+        intros L k hu. intros HGoodLog Hlog. intros l t. intros Hlow HLit Hlevel. symmetry in HLit.
         unfold GoodLog in HGoodLog. destruct HGoodLog as (HGL_WfLog & HGL_LogInv).
         unfold WF_Log in HGL_WfLog. destruct HGL_WfLog as (HGL_WL_Usage & HGL_WL_Keys).
-        induction Hlevel.
-        - exfalso. specialize HGL_WL_Usage with (t:=Literal bs) (u:=HMacKey hu) (u':=AdversaryGuess).
-            apply HGL_WL_Usage in Hlog ; try assumption. discriminate.
-        - exfalso. specialize HGL_WL_Usage with (t:=Literal bs) (u:=HMacKey hu) (u':=Nonce nu).
-            apply HGL_WL_Usage in Hlog ; try assumption. discriminate.
-        - apply H0 in Hlow. assumption.
-        - exfalso. specialize HGL_WL_Usage with (t:=Literal bs) (u:=HMacKey hu) (u':=SEncKey su).
-            apply HGL_WL_Usage in Hlog ; try assumption. discriminate.
-        - exfalso. specialize HGL_WL_Usage with (t:=Literal bs) (u:=HMacKey hu) (u':=SignKey su).
-            apply HGL_WL_Usage in Hlog ; try assumption. discriminate.
-        - exfalso. specialize HGL_WL_Usage with (t:=Literal bs) (u:=HMacKey hu) (u':=VerfKey su).
-            apply HGL_WL_Usage in Hlog ; try assumption. discriminate.
-        - exfalso. specialize HGL_WL_Usage with (t:=Literal bs) (u:=HMacKey hu) (u':=EncKey eu).
-            apply HGL_WL_Usage in Hlog ; try assumption. discriminate.
-        - exfalso. specialize HGL_WL_Usage with (t:=Literal bs) (u:=HMacKey hu) (u':=DecKey eu).
-            apply HGL_WL_Usage in Hlog ; try assumption. discriminate.
-        - 
-    Admitted.
+        induction Hlevel ; try discriminate.
+        - exfalso. specialize HGL_WL_Usage with (t:=Literal k) (u:=HMacKey hu) (u':=AdversaryGuess).
+            apply HGL_WL_Usage in Hlog ; try assumption. 
+            + discriminate.
+            + rewrite HLit. assumption.
+        - exfalso. specialize HGL_WL_Usage with (t:=Literal k) (u:=HMacKey hu) (u':=Nonce nu).
+            apply HGL_WL_Usage in Hlog ; try assumption. 
+            + discriminate.
+            + rewrite HLit. assumption.
+        - apply H0 in Hlow. rewrite HLit. assumption.
+        - exfalso. specialize HGL_WL_Usage with (t:=Literal k) (u:=HMacKey hu) (u':=SEncKey su).
+            apply HGL_WL_Usage in Hlog ; try assumption. 
+            + discriminate.
+            + rewrite HLit. assumption.
+        - exfalso. specialize HGL_WL_Usage with (t:=Literal k) (u:=HMacKey hu) (u':=SignKey su).
+            apply HGL_WL_Usage in Hlog ; try assumption. 
+            + discriminate.
+            + rewrite HLit. assumption.
+        - exfalso. specialize HGL_WL_Usage with (t:=Literal k) (u:=HMacKey hu) (u':=VerfKey su).
+            apply HGL_WL_Usage in Hlog ; try assumption. 
+            + discriminate.
+            + rewrite HLit. assumption.
+        - exfalso. specialize HGL_WL_Usage with (t:=Literal k) (u:=HMacKey hu) (u':=EncKey eu).
+            apply HGL_WL_Usage in Hlog ; try assumption. 
+            + discriminate.
+            + rewrite HLit. assumption.
+        - exfalso. specialize HGL_WL_Usage with (t:=Literal k) (u:=HMacKey hu) (u':=DecKey eu).
+            apply HGL_WL_Usage in Hlog ; try assumption. 
+            + discriminate.
+            + rewrite HLit. assumption.
+    Qed.
 
     Theorem HMac_Inversion : forall L l k p,
-        Level l (HMac k p) L ->
+        forall t, t = HMac k p -> Level l t L ->
         canHmac k p L \/ Level Low k L.
     Proof.
-        intros L l k p. intro Hlevel.
-        induction Hlevel.
-        - 
-    Admitted.
+        intros L l k p. intro t. intros Hhmac Hlevel.
+        induction Hlevel ; try discriminate.
+        - injection Hhmac. intros Hm Hk0. rewrite Hm in H. rewrite Hk0 in H. auto.
+        - injection Hhmac. intros _ Hk0. rewrite Hk0 in Hlevel1. auto.
+    Qed.
 
     Theorem SEnc_Inversion : forall L l k p,
-        Level l (SEnc k p) L ->
+        forall t, t = SEnc k p -> Level l t L ->
         canSEnc k p L \/ Level Low k L.
     Proof.
-        intros L l k p. intro Hlevel.
-    Admitted.
+        intros L l k p. intro t. intros Hsenc Hlevel.
+        induction Hlevel ; try discriminate.
+        - injection Hsenc. intros Hp0 Hk0. rewrite Hp0 in H. rewrite Hk0 in H. auto.
+        - injection Hsenc. intros _ Hk0. rewrite Hk0 in Hlevel1. auto.
+    Qed.
 
     Theorem Sign_Inversion : forall L l k p,
-        Level l (Sign k p) L ->
+        forall t, t = Sign k p -> Level l t L ->
         canSign k p L \/ Level Low k L.
     Proof.
-        intros L l k p. intro Hlevel.
-    Admitted.
+        intros L l k p. intro t. intros Hsign Hlevel.
+        induction Hlevel ; try discriminate.
+        - injection Hsign. intros Hm Hk0. rewrite Hm in H. rewrite Hk0 in H. auto.
+        - injection Hsign. intros _ Hk0. rewrite Hk0 in Hlevel1. auto.
+    Qed.
 
     Theorem Enc_Inversion : forall L l k p,
-        Level l (Sign k p) L ->
+        forall t, t = Enc k p -> Level l t L ->
         (canEnc k p L /\ Level High p L) \/ Level Low k L.
     Proof.
-        intros L l k p. intro Hlevel.
-    Admitted.
+        intros L l k p. intro t. intros Henc Hlevel.
+        induction Hlevel ; try discriminate.
+        - injection Henc. intros Hp0 Hk0. 
+            rewrite Hp0 in H. rewrite Hk0 in H. rewrite Hp0 in Hlevel. auto.
+        - injection Henc. intros _ Hk0. rewrite Hk0 in Hlevel1. auto.
+    Qed.
 End CryptographicInvariants.
 
 Import RPCDefs.
@@ -542,32 +579,35 @@ Import RPCInvariants.
 (* A-RPC: Request Correspondance Theorem *)
 Theorem RequestCorrespondance: forall a b k req L,
     GoodLog L -> KeyAB a b k L ->
-    forall l, l = Low -> Level l (HMac k (Pair (Literal (String TagRequest EmptyString)) req)) L ->
+    forall l t, l = Low -> t = (HMac k (Pair (Literal (String TagRequest EmptyString)) req)) -> 
+    Level l t L ->
     LoggedP (Request a b req) L \/
     LoggedP (Bad a) L \/ LoggedP (Bad b) L.
 Proof.
     intros a b k req L. unfold KeyAB. 
-    intros HGoodLog HKeyAB. intro l. intros Hlow Hlevel. unfold LoggedP. 
+    intros HGoodLog HKeyAB. intros l t. intros Hlow Hhmac Hlevel. unfold LoggedP. 
     unfold GoodLog in HGoodLog. destruct HGoodLog as (HGL_WfLog & HGL_LogInv).
     unfold WF_Log in HGL_WfLog. destruct HGL_WfLog as (HGL_WL_Usage & HGL_WL_Keys).
-    unfold LogInvariant in HGL_LogInv. induction Hlevel.
-    - exfalso. 
+    unfold LogInvariant in HGL_LogInv. induction Hlevel ; try discriminate.
+    - apply IHHlevel in HGL_WL_Usage ; try assumption. admit.
+    - apply IHHlevel1 in HGL_WL_Usage ; try auto. admit.
 Admitted.
 
 (* A-RPC: Response Correspondance Theorem *)
 Theorem ResponseCorrespondance: forall a b k req resp L,
     GoodLog L -> KeyAB a b k L ->
-    forall l, l = Low -> Level l (HMac k (Pair (Literal (String TagResponse EmptyString)) (Pair req resp))) L ->
+    forall l t, l = Low -> t = (HMac k (Pair (Literal (String TagResponse EmptyString)) (Pair req resp))) ->
+    Level l t L ->
     LoggedP (Response a b req resp) L \/
     LoggedP (Bad a) L \/ LoggedP (Bad b) L.
 Proof.
     intros a b k req resp L. unfold KeyAB.
-    intros HGoodLog HKeyAB. intro l. intros Hlow Hlevel. unfold LoggedP.
+    intros HGoodLog HKeyAB. intros l t. intros Hlow Hhmac Hlevel. unfold LoggedP.
     unfold GoodLog in HGoodLog. destruct HGoodLog as (HGL_WfLog & HGL_LogInv).
     unfold WF_Log in HGL_WfLog. destruct HGL_WfLog as (HGL_WL_Usage & HGL_WL_Keys).
-    unfold LogInvariant in HGL_LogInv. induction Hlevel.
-    - exfalso. specialize HGL_LogInv with (t:=k) (u:=HMacKey (U_KeyAB a b)). apply HGL_LogInv in HKeyAB.
-        destruct HKeyAB as (bs0, HKeyAB_bs).
+    unfold LogInvariant in HGL_LogInv. induction Hlevel ; try discriminate.
+    - apply IHHlevel in HGL_WL_Usage ; try assumption. admit.
+    - apply IHHlevel1 in HGL_WL_Usage ; try auto. admit.
 Admitted.
 
 (* A-RPC: Key Secrecy Theorem *)
@@ -587,14 +627,14 @@ Admitted.
 (* Keyed HMAC Inversion Theorem *)
 Theorem KeyedHMac_Inversion: forall hu k p L,
     GoodLog L -> Logged (New k (HMacKey hu)) L ->
-    forall l, l = High -> Level l (HMac k p) L ->
+    forall l t, l = High -> t = HMac k p -> Level l t L ->
     canHmac k p L \/ hmacComp k L.
 Proof.
     intros hu k p L. intros HGoodLog Hlog.
-    intro l. intros Hhigh Hlevel.
+    intros l t. intros Hhigh Hhmac Hlevel.
     unfold GoodLog in HGoodLog. destruct HGoodLog as (HGL_WfLog & HGL_LogInv).
     unfold WF_Log in HGL_WfLog. destruct HGL_WfLog as (HGL_WL_Usage & HGL_WL_Keys).
-    unfold LogInvariant in HGL_LogInv. induction Hlevel.
+    unfold LogInvariant in HGL_LogInv. induction Hlevel ; try discriminate.
     - admit.
     - admit.
     - admit.
@@ -604,6 +644,6 @@ Proof.
     - admit.
     - admit.
     - admit.
-    - apply IHHlevel in HGL_WL_Usage ; try assumption.
+    - apply IHHlevel in HGL_WL_Usage ; assumption.
     - 
 Admitted.
