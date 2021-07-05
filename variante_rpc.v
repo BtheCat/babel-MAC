@@ -59,7 +59,7 @@ Module RPCDefs <: ProtocolDefs.
 
     Inductive pEvent' :=
         | Request (a b req: term)
-        | Response (a b resp: term)
+        | Response (a b req resp: term)
         | Bad (p: term).
     Definition pEvent := pEvent'.
 End RPCDefs.
@@ -188,9 +188,9 @@ Module RPCInvariants <: ProtocolInvariants RPCDefs.
         (exists req,
             p = Pair (Literal (String TagRequest EmptyString)) req /\
             LoggedP (Request a b req) L) \/
-        (exists resp,
+        (exists req resp,
             p = Pair (Literal (String TagResponse EmptyString)) resp /\
-            LoggedP (Response a b resp) L).
+            LoggedP (Response a b req resp) L).
 
     Definition canHmac k p L :=
         exists a, exists b, KeyAB a b k L /\ KeyABPayload a b p L.
@@ -604,12 +604,12 @@ Proof.
         destruct H as (a0, Ha). destruct Ha as (b0, Hab). destruct Hab as (Hab_key & Hab_keyPayload).
         unfold KeyAB in Hab_key. specialize HGL_WL_Usage with (t:=k) (u:=HMacKey (U_KeyAB a b)) (u':=HMacKey (U_KeyAB a0 b0)).
         apply HGL_WL_Usage in HKeyAB ; try assumption. injection HKeyAB. intros Hb Ha.
-        unfold KeyABPayload in Hab_keyPayload. destruct Hab_keyPayload as [Hab_KP_req | Hab_KP_resp].
+        unfold KeyABPayload in Hab_keyPayload. destruct Hab_keyPayload as [Hab_KP_req | Hab_KP_reqresp].
         + destruct Hab_KP_req as (req0, Hab_KP_req). destruct Hab_KP_req as (Hab_KP_req_m & Hab_KP_req_log).
             symmetry in Hm. rewrite Hab_KP_req_m in Hm. injection Hm. intro Hreq.
             rewrite Ha. rewrite Hb. rewrite Hreq. assumption.
-        +  exfalso. destruct Hab_KP_resp as (resp0, Hab_KP_resp).
-            destruct Hab_KP_resp as (Hab_KP_resp_m & _). symmetry in Hm. rewrite Hab_KP_resp_m in Hm. 
+        +  exfalso. destruct Hab_KP_reqresp as (req0, hab_KP_req). destruct hab_KP_req as (resp0, Hab_KP_reqresp).
+            destruct Hab_KP_reqresp as (Hab_KP_reqresp_m & _). symmetry in Hm. rewrite Hab_KP_reqresp_m in Hm. 
             injection Hm. intros _ Htag.
             assert ( HtagDistinct : TagRequest <> TagResponse ). apply TagsDistinct. 
             tauto.
@@ -629,14 +629,14 @@ Proof.
 Qed.
 
 (* A-RPC: Response Correspondance Theorem *)
-Theorem ResponseCorrespondance: forall a b k resp L,
+Theorem ResponseCorrespondance: forall a b k req resp L,
     GoodLog L -> KeyAB a b k L ->
     forall l t, l = Low -> t = (HMac k (Pair (Literal (String TagResponse EmptyString)) resp)) ->
     Level l t L ->
-    LoggedP (Response a b resp) L \/
+    LoggedP (Response a b req resp) L \/
     LoggedP (Bad a) L \/ LoggedP (Bad b) L.
 Proof.
-    intros a b k resp L. unfold KeyAB.
+    intros a b k req resp L. unfold KeyAB.
     intros HGoodLog HKeyAB. intros l t. intros Hlow Hhmac Hlevel. 
     assert ( HGoodLog_bis : GoodLog L ). assumption.
     unfold GoodLog in HGoodLog. destruct HGoodLog as (HGL_WfLog & HGL_LogInv).
@@ -646,13 +646,14 @@ Proof.
         destruct H as (a0, Ha). destruct Ha as (b0, Hab). destruct Hab as (Hab_key & Hab_keyPayload).
         unfold KeyAB in Hab_key. specialize HGL_WL_Usage with (t:=k) (u:=HMacKey (U_KeyAB a b)) (u':=HMacKey (U_KeyAB a0 b0)).
         apply HGL_WL_Usage in HKeyAB ; try assumption. injection HKeyAB. intros Hb Ha.
-        unfold KeyABPayload in Hab_keyPayload. destruct Hab_keyPayload as [Hab_KP_req | Hab_KP_resp].
-        + exfalso. destruct Hab_KP_req as (req0, hab_KP_req). destruct hab_KP_req as (Hab_KP_req_m & _).
+        unfold KeyABPayload in Hab_keyPayload. destruct Hab_keyPayload as [Hab_KP_req | Hab_KP_reqresp].
+        + exfalso. destruct Hab_KP_req as (req0, Hab_KP_req). destruct Hab_KP_req as (Hab_KP_req_m & _).
             symmetry in Hm. rewrite Hab_KP_req_m in Hm. injection Hm. intros _ Htag.
             assert ( HtagDistinct : TagRequest <> TagResponse ). apply TagsDistinct. firstorder.
-        + destruct Hab_KP_resp as (resp0, Hab_KP_resp).
-            destruct Hab_KP_resp as (Hab_KP_resp_m & Hab_KP_resp_log). symmetry in Hm. rewrite Hab_KP_resp_m in Hm. 
-            injection Hm. intros Hresp. rewrite Ha. rewrite Hb. rewrite Hresp. assumption.
+        + destruct Hab_KP_reqresp as (req0, Hab_KP_req). destruct Hab_KP_req as (resp0, Hab_KP_reqresp).
+            destruct Hab_KP_reqresp as (Hab_KP_reqresp_m & Hab_KP_reqresp_log). symmetry in Hm. rewrite Hab_KP_reqresp_m in Hm. 
+            injection Hm. intros Hresp. rewrite Ha. rewrite Hb. rewrite Hresp. 
+            (* We can't conclude here because we don't remember request which response respond to. *) admit.
     - right. injection Hhmac. intros Hm Hk0.
         specialize HGL_LogInv with (t:=k) (u:=HMacKey (U_KeyAB a b)).
         assert ( Hlog : Logged (New k (HMacKey (U_KeyAB a b))) L ). assumption.
@@ -666,7 +667,7 @@ Proof.
             rewrite HLitk in Hlog. specialize HGL_WL_Usage with (t:=Literal bs) (u:=HMacKey (U_KeyAB a b)) (u':=HMacKey (U_KeyAB a0 b0)).
             apply HGL_WL_Usage in HHC_ab_key ; try assumption. injection HHC_ab_key.
             intros Hb Ha. rewrite Hb. rewrite Ha. unfold KeyABComp in HHC_ab_keyComp. assumption. 
-Qed.
+Admitted.
 
 (* A-RPC: Key Secrecy Theorem *)
 Theorem KeySecrecy: forall a b k L,
