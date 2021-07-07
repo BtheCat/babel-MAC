@@ -363,3 +363,25 @@ Proof.
             apply HGL_WfLog in HnonceComp_ExchAB ; try assumption. injection HnonceComp_ExchAB. intros Hmsg Hb Ha.
             unfold ExchangeABComp in HnonceComp_ExchABComp. rewrite Ha. assumption.
 Qed.
+
+Theorem NonceSecrecy: forall a b n0 msg L,
+    GoodLog L -> ExchangeAB a b n0 msg L ->
+    forall l, l = Low -> Level l n0 L ->
+    LoggedP (Bad a) L.
+Proof.
+    intros a b n0 msg L. unfold ExchangeAB.
+    intros HGoodLog HExchangeAB. intro l. intros Hlow Hlevel.
+    unfold GoodLog in HGoodLog. destruct HGoodLog as (HGL_WfLog & HGL_LogInv).
+    unfold WF_Log in HGL_WfLog. unfold LogInvariant in HGL_LogInv.
+    specialize HGL_LogInv with (t:=n0) (u:=Nonce_U (Challenge a b msg)).
+    assert ( HExchangeAB_bis : Logged (New n0 (Nonce_U (Challenge a b msg))) L ). assumption.
+    apply HGL_LogInv in HExchangeAB_bis. destruct HExchangeAB_bis as (bs, HLitn0).
+    induction n0 ; try discriminate. induction Hlevel ; try discriminate.
+    - specialize HGL_WfLog with (t:=Literal bs0) (u:=Nonce_U (Challenge a b msg)) (u':=AdversaryGuess).
+        apply HGL_WfLog in HExchangeAB ; try assumption. discriminate.
+    - apply H0 in Hlow. unfold nonceComp in Hlow. destruct Hlow as (a', Hlow_a). destruct Hlow_a as (b', Hlow_ab).
+        destruct Hlow_ab as (msg', Hlow_abmsg). destruct Hlow_abmsg as (Hlow_exchAB & Hlow_exchABComp).
+        unfold ExchangeAB in Hlow_exchAB. specialize HGL_WfLog with (t:=Literal bs0) (u:=Nonce_U (Challenge a b msg)) (u':=Nonce_U (Challenge a' b' msg')).
+        apply HGL_WfLog in HExchangeAB ; try assumption. injection HExchangeAB. intros Hmsg Hb Ha.
+        unfold ExchangeABComp in Hlow_exchABComp. rewrite Ha. assumption.
+Qed.
