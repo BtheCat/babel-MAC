@@ -27,7 +27,8 @@ Require Import ListSet.
 
 Inductive term: Type :=
     | Literal (b: string)
-    | Pair (a: term) (b: term).
+    | Pair (a: term) (b: term)
+    | Nonce (n: term) (p: term).
 
 (* Signature: Protocol Usages and Events *)
 
@@ -58,7 +59,7 @@ Module Defs (PD : ProtocolDefs).
 
     Inductive usage: Type :=
         | AdversaryGuess
-        | Nonce (nu: nonce_usage).
+        | Nonce_U (nu: nonce_usage).
 
     Inductive event: Type :=
         | New (t: term) (u: usage)
@@ -90,6 +91,9 @@ Module Type ProtocolInvariants (PD: ProtocolDefs).
     (* Nonce Predicate *)
     Parameter nonceComp: term -> log -> Prop.
     Parameter nonceComp_Stable: forall t, Stable (nonceComp t).
+
+    Parameter canNonce : term -> term -> log -> Prop.
+    Parameter canNonce_Stable: forall n m, Stable (canNonce n m).
 End ProtocolInvariants.
 
 Module BabelLightInvariants <: ProtocolInvariants BabelLightDefs.
@@ -100,7 +104,7 @@ Module BabelLightInvariants <: ProtocolInvariants BabelLightDefs.
         forall t u, Logged (New t u) L -> (exists bs, t = Literal bs).
 
     Definition ExchangeAB a b n0 msg L :=
-        Logged (New n0 (Nonce (Challenge a b msg))) L.
+        Logged (New n0 (Nonce_U (Challenge a b msg))) L.
 
     Definition ExchangeABComp p L :=
         LoggedP (Bad p) L.
@@ -117,8 +121,38 @@ Module BabelLightInvariants <: ProtocolInvariants BabelLightDefs.
         destruct HlogL as (a, HlogL_a). destruct HlogL_a as (b, HlogL_ab). destruct HlogL_ab as (msg, HlogL_abmsg).
         destruct HlogL_abmsg as (HlogL_abmsg_nonce & HlogL_abmsg_bad).
         exists a. exists b. exists msg. split.
-        - specialize Hleq_log with (e:=New n0 (Nonce (Challenge a b msg))). apply Hleq_log. assumption.
+        - specialize Hleq_log with (e:=New n0 (Nonce_U (Challenge a b msg))). apply Hleq_log. assumption.
         - specialize Hleq_log with (e:=ProtEvent (Bad a)). apply Hleq_log. assumption.
+    Qed.
+
+    Definition ExchangeABPayload a b p L :=
+        (exists n0, exists msg,
+            p = Pair (Literal (String TagChallengeRequest EmptyString)) (Pair n0 msg) /\
+            LoggedP (ChallengeRequest a b n0 msg) L
+        ) \/
+        (exists n0,
+            p = Pair (Literal (String TagChallengeReply EmptyString)) n0 /\
+            LoggedP (ChallengeReply a b n0) L
+        ).
+    
+    Definition canNonce n p L :=
+        exists a, exists b, exists msg, ExchangeAB a b n msg L /\ ExchangeABPayload a b p L.
+
+    Theorem canNonce_Stable:
+        forall n p, Stable (canNonce n p).
+    Proof.
+        intros n p. unfold Stable. intros L L'.
+        unfold leq_log. unfold canNonce. unfold ExchangeAB. unfold ExchangeABPayload. unfold LoggedP.
+        intros Hleq_log HlogL. destruct HlogL as (a, HlogL_a). destruct HlogL_a as (b, HlogL_ab). destruct HlogL_ab as (msg, HlogL_abmsg).
+        exists a. exists b. exists msg.
+        destruct HlogL_abmsg as (HlogL_abmsg_ExchAB & HlogL_abmsg_ExchABPayload). split.
+        - specialize Hleq_log with (e:=New n (Nonce_U (Challenge a b msg))). apply Hleq_log. assumption.
+        - destruct HlogL_abmsg_ExchABPayload as [HlogL_abmsg_EABP_req | HlogL_abmsg_EABP_resp].
+            * left. destruct HlogL_abmsg_EABP_req as (n0, HlogL_abmsg_EABP_req_n0). 
+                destruct HlogL_abmsg_EABP_req_n0 as (msg0, HlogL_abmsg_EABP_req_n0msg).
+                exists n0. exists msg0. firstorder.
+            * right. destruct HlogL_abmsg_EABP_resp as (n0, HlogL_abmsg_EABP_resp_n0).
+                exists n0. firstorder.
     Qed.
 End BabelLightInvariants.
 
@@ -145,7 +179,7 @@ Module CryptographicInvariants (PD: ProtocolDefs) (PI: ProtocolInvariants PD).
 
         (* Nonces are Low when nonceComp holds *)
         | Level_Nonce: forall l bs L nu,
-            Logged (New (Literal bs) (Nonce nu)) L ->
+            Logged (New (Literal bs) (Nonce_U nu)) L ->
             (l = Low -> nonceComp (Literal bs) L) ->
             Level l (Literal bs) L 
 
@@ -153,7 +187,18 @@ Module CryptographicInvariants (PD: ProtocolDefs) (PI: ProtocolInvariants PD).
         | Level_Pair: forall l t1 t2 L,
             Level l t1 L ->
             Level l t2 L ->
-            Level l (Pair t1 t2) L.
+            Level l (Pair t1 t2) L
+            
+        (* Honest Nonce are as Low as their payload *)
+        | Level_NonceU: forall l n m L,
+            canNonce n m L ->
+            Level l m L ->
+            Level l (Nonce n m) L
+        (* Dishonest Nonce are Low *)
+        | Level_NonceU_Low: forall l n m L,
+            Level Low n L ->
+            Level Low m L ->
+            Level l (Nonce n m) L.
     
     (* Generic Invariants: Low is included in High. *)
     Theorem Low_High: forall t L,
@@ -164,6 +209,8 @@ Module CryptographicInvariants (PD: ProtocolDefs) (PI: ProtocolInvariants PD).
         - apply Level_AdversaryGuess. assumption.
         - apply Level_Nonce with (nu:=nu) ; try assumption. easy. 
         - apply Level_Pair ; assumption.
+        - apply Level_NonceU ; assumption.
+        - apply Level_NonceU_Low ; assumption.
     Qed.
 
     (* Generic Invariants: Level is stable. *)
@@ -177,10 +224,13 @@ Module CryptographicInvariants (PD: ProtocolDefs) (PI: ProtocolInvariants PD).
             specialize Hleq_log with (e:=(New (Literal bs) AdversaryGuess)). auto.
         - apply Level_Nonce with (nu:=nu). 
             * unfold leq_log in Hleq_log.
-                specialize Hleq_log with (e:=(New (Literal bs) (Nonce nu))). auto.
+                specialize Hleq_log with (e:=(New (Literal bs) (Nonce_U nu))). auto.
             * intro Hllow. apply H0 in Hllow. 
                 assert ( Hstable : Stable (nonceComp (Literal bs)) ). apply nonceComp_Stable. firstorder.
         - apply Level_Pair ; firstorder.
+        - apply Level_NonceU ; try auto.
+            assert ( HStable : Stable (canNonce n m) ). apply canNonce_Stable. firstorder.
+        - apply Level_NonceU_Low ; firstorder.
     Qed.
 
     (* Generic Invariants: Distinct usages are absurd *)
@@ -202,7 +252,7 @@ Module CryptographicInvariants (PD: ProtocolDefs) (PI: ProtocolInvariants PD).
     (* Generic Invariants: Level inversion. *)
     Theorem LowNonce_Inversion : forall L n nu,
         GoodLog L ->
-        Logged (New (Literal n) (Nonce nu)) L ->
+        Logged (New (Literal n) (Nonce_U nu)) L ->
         forall l t, l = Low -> t = Literal n -> Level l t L ->
         nonceComp (Literal n) L.
     Proof.
@@ -210,15 +260,106 @@ Module CryptographicInvariants (PD: ProtocolDefs) (PI: ProtocolInvariants PD).
         unfold GoodLog in HGoodLog. destruct HGoodLog as (HGL_WfLog & _).
         unfold WF_Log in HGL_WfLog.
         induction Hlevel ; try discriminate. 
-        - exfalso. specialize HGL_WfLog with (t:=Literal n) (u:=Nonce nu) (u':=AdversaryGuess).
+        - exfalso. specialize HGL_WfLog with (t:=Literal n) (u:=Nonce_U nu) (u':=AdversaryGuess).
             apply HGL_WfLog in Hlog ; try assumption. 
             + discriminate. 
             + rewrite HLit. assumption. 
         - firstorder. rewrite HLit. assumption.
+    Qed.
+
+    Theorem Nonce_Inversion : forall L l n m,
+        forall t, t = Nonce n m -> Level l t L ->
+        canNonce n m L \/ Level Low n L.
+    Proof.
+        intros L l n m. intro t. intros Hnonce Hlevel.
+        induction Hlevel ; try discriminate.
+        - left. injection Hnonce. intros Hm0 Hn0. rewrite Hm0 in H. rewrite Hn0 in H. assumption.
+        - right. injection Hnonce. intros _ Hn0. rewrite Hn0 in Hlevel1. assumption.
     Qed.
 End CryptographicInvariants.
 
 Import BabelLightDefs.
 Include CryptographicInvariants BabelLightDefs BabelLightInvariants.
 Import BabelLightInvariants.
-    
+
+Theorem ChallengeRequestCorrespondance: forall a b n0 msg L,
+    GoodLog L -> ExchangeAB a b n0 msg L ->
+    forall l t, l = Low -> t = Nonce n0 (Pair (Literal (String TagChallengeRequest EmptyString)) (Pair n0 msg)) ->
+    Level l t L -> LoggedP (ChallengeRequest a b n0 msg) L \/ LoggedP (Bad a) L.
+Proof.
+    intros a b n0 msg L. unfold ExchangeAB.
+    intros HGoodLog HExchangeAB. intros l t. intros Hlow Hnonce Hlevel.
+    assert ( HGoodLog_bis : GoodLog L ). assumption.
+    unfold GoodLog in HGoodLog. destruct HGoodLog as (HGL_WfLog & HGL_LogInv).
+    unfold WF_Log in HGL_WfLog. unfold LogInvariant in HGL_LogInv. induction Hlevel ; try discriminate.
+    - left. injection Hnonce. intros Hm Hn. rewrite Hn in H. unfold canNonce in H.
+        destruct H as (a0, Ha). destruct Ha as (b0, Hab). destruct Hab as (msg0, Habmsg).
+        destruct Habmsg as (Habmsg_ExchAB & Habmsg_ExchABPayload). unfold ExchangeAB in Habmsg_ExchAB.
+        specialize HGL_WfLog with (t:=n0) (u:=Nonce_U (Challenge a b msg)) (u':=Nonce_U (Challenge a0 b0 msg0)).
+        apply HGL_WfLog in Habmsg_ExchAB ; try assumption. injection Habmsg_ExchAB.
+        intros Hmsg Hb Ha. unfold ExchangeABPayload in Habmsg_ExchABPayload.
+        destruct Habmsg_ExchABPayload as [Habmsg_EABP_req | Habmsg_EABP_resp].
+        + destruct Habmsg_EABP_req as (n', Habmsg_EABP_req_n0). destruct Habmsg_EABP_req_n0 as (msg', Habmsg_EABP_req_n0msg).
+            destruct Habmsg_EABP_req_n0msg as (Habmsg_EABP_req_msg & Habmsg_EABP_req_log).
+            symmetry in Habmsg_EABP_req_msg. rewrite Hm in Habmsg_EABP_req_msg. injection Habmsg_EABP_req_msg.
+            intros Hmsg' Hn'. rewrite Ha. rewrite Hb. rewrite Hn' in Habmsg_EABP_req_log. rewrite Hmsg' in Habmsg_EABP_req_log.
+            assumption.
+        + exfalso. destruct Habmsg_EABP_resp as (n', Habmsg_EABP_resp_n0).
+            destruct Habmsg_EABP_resp_n0 as (Habmsg_EABP_resp_msg & _). symmetry in Habmsg_EABP_resp_msg. 
+            rewrite Hm in Habmsg_EABP_resp_msg. injection Habmsg_EABP_resp_msg. intros _ Htag.
+            assert ( HtagDistinct : TagChallengeRequest <> TagChallengeReply ). apply TagsDistinct. firstorder.
+    - right. injection Hnonce. intros Hm Hn.
+        specialize HGL_LogInv with (t:=n0) (u:=Nonce_U (Challenge a b msg)).
+        assert ( Hlog : Logged (New n0 (Nonce_U (Challenge a b msg))) L ). assumption.
+        apply HGL_LogInv in HExchangeAB. destruct HExchangeAB as (bs, HLitn0).
+        assert ( HnonceComp : nonceComp (Literal bs) L ).
+        + apply LowNonce_Inversion with (nu:=Challenge a b msg) (l:=Low) (t:=Literal bs) ; try easy.
+            * rewrite HLitn0 in Hlog. assumption.
+            * rewrite Hn in Hlevel1. rewrite HLitn0 in Hlevel1. assumption.
+        + unfold nonceComp in HnonceComp. destruct HnonceComp as (a0, HnonceComp_a). destruct HnonceComp_a as (b0, HnonceComp_ab).
+            destruct HnonceComp_ab as (msg0, HnonceComp_abmsg). destruct HnonceComp_abmsg as (HnonceComp_ExchAB & HnonceComp_ExchABComp).
+            unfold ExchangeAB in HnonceComp_ExchAB. rewrite HLitn0 in Hlog. 
+            specialize HGL_WfLog with (t:=Literal bs) (u:=Nonce_U (Challenge a b msg)) (u':=Nonce_U (Challenge a0 b0 msg0)).
+            apply HGL_WfLog in Hlog ; try assumption. injection Hlog. intros Hmsg Hb Ha.
+            unfold ExchangeABComp in HnonceComp_ExchABComp. rewrite Ha. assumption.
+Qed.
+
+Theorem ChallengeReplyCorrespondance: forall a b n0 msg L,
+    GoodLog L -> ExchangeAB a b n0 msg L ->
+    forall l t, l = Low -> t = Nonce n0 (Pair (Literal (String TagChallengeReply EmptyString)) n0) ->
+    Level l t L -> LoggedP (ChallengeReply a b n0) L \/ LoggedP (Bad a) L.
+Proof.
+    intros a b n0 msg L. unfold ExchangeAB. 
+    intros HGoodLog HExchangeAB. intros l t. intros Hlow Hnonce Hlevel.
+    assert ( HGoodLog_bis : GoodLog L ). assumption.
+    unfold GoodLog in HGoodLog. destruct HGoodLog as (HGL_WfLog & HGL_LogInv).
+    unfold WF_Log in HGL_WfLog. unfold LogInvariant in HGL_LogInv. 
+    induction Hlevel ; try discriminate.
+    - left. injection Hnonce. intros Hm Hn. unfold canNonce in H. destruct H as (a0, Ha).
+        destruct Ha as (b0, Hab). destruct Hab as (msg0, Habmsg). destruct Habmsg as (Habmsg_ExchAB & Habmsg_ExchABPayload).
+        unfold ExchangeAB in Habmsg_ExchAB. rewrite Hn in Habmsg_ExchAB.
+        specialize HGL_WfLog with (t:=n0) (u:=Nonce_U (Challenge a b msg)) (u':=Nonce_U (Challenge a0 b0 msg0)).
+        apply HGL_WfLog in HExchangeAB ; try assumption. injection HExchangeAB. intros Hmsg Hb Ha. unfold ExchangeABPayload in Habmsg_ExchABPayload.
+        destruct Habmsg_ExchABPayload as [Habmsg_EABP_req | Habmsg_EABP_resp].
+        * exfalso. destruct Habmsg_EABP_req as (n', Habmsg_EABP_req_n0). destruct Habmsg_EABP_req_n0 as (msg', Habmsg_EABP_req_n0msg).
+            destruct Habmsg_EABP_req_n0msg as (Habmsg_EABP_req_msg & _). symmetry in Habmsg_EABP_req_msg.
+            rewrite Hm in Habmsg_EABP_req_msg. injection Habmsg_EABP_req_msg. intros _ Htag.
+            assert ( HtagDistinct : TagChallengeRequest <> TagChallengeReply ). apply TagsDistinct. tauto.
+        * destruct Habmsg_EABP_resp as (n', Habmsg_EABP_resp_n0). destruct Habmsg_EABP_resp_n0 as (Habmsg_EABP_resp_msg & Habmsg_EABP_resp_log).
+            symmetry in Habmsg_EABP_resp_msg. rewrite Hm in Habmsg_EABP_resp_msg. injection Habmsg_EABP_resp_msg.
+            intros Hn'. rewrite Ha. rewrite Hb. rewrite Hn' in Habmsg_EABP_resp_log. assumption.
+    - right. injection Hnonce. intros Hm Hn.
+        specialize HGL_LogInv with (t:=n0) (u:=Nonce_U (Challenge a b msg)).
+        assert ( Hlog : Logged (New n0 (Nonce_U (Challenge a b msg))) L ). assumption.
+        apply HGL_LogInv in HExchangeAB. destruct HExchangeAB as (bs, HLitn0).
+        assert ( HnonceComp : nonceComp (Literal bs) L ).
+        + apply LowNonce_Inversion with (nu:=Challenge a b msg) (l:=Low) (t:=Literal bs) ; try easy.
+            * rewrite HLitn0 in Hlog. assumption.
+            * rewrite Hn in Hlevel1. rewrite HLitn0 in Hlevel1. assumption.
+        + unfold nonceComp in HnonceComp. destruct HnonceComp as (a0, HnonceComp_a). destruct HnonceComp_a as (b0, HnonceComp_ab).
+            destruct HnonceComp_ab as (msg0, HnonceComp_abmsg). destruct HnonceComp_abmsg as (HnonceComp_ExchAB & HnonceComp_ExchABComp).
+            unfold ExchangeAB in HnonceComp_ExchAB. rewrite HLitn0 in Hlog.
+            specialize HGL_WfLog with (t:=Literal bs) (u:=Nonce_U (Challenge a b msg)) (u':=Nonce_U (Challenge a0 b0 msg0)).
+            apply HGL_WfLog in HnonceComp_ExchAB ; try assumption. injection HnonceComp_ExchAB. intros Hmsg Hb Ha.
+            unfold ExchangeABComp in HnonceComp_ExchABComp. rewrite Ha. assumption.
+Qed.
