@@ -162,45 +162,31 @@ Module CryptographicInvariants (PD: ProtocolDefs) (PI: ProtocolInvariants PD).
     Definition GoodLog (L: log): Prop :=
         WF_Log L /\ LogInvariant L.
 
-    (*
-        Level predicates indicate how cryptography can be used by honest or dishonest protocol participants.
-        We say that a term t is Low in log L (denotate Level Low t L) whenever it may be made known to the adversary 
-            without compromising the protocol's security objectives.
-        We say that a term t is High in log L whenever it can be derivated by any honest or dishonest protocol participant 
-            (including the adversary).
-        Intuitively, a term is truly secret if it is not Low in the current Log
-    *)
     Inductive level := Low | High.
     Inductive Level: level -> term -> log -> Prop :=
-        (* AdversaryGuesses are always Low *)
         | Level_AdversaryGuess: forall l bs L,
             Logged (New (Literal bs) AdversaryGuess) L ->
             Level l (Literal bs) L
 
-        (* Nonces are Low when nonceComp holds *)
         | Level_Nonce: forall l bs L nu,
             Logged (New (Literal bs) (Nonce_U nu)) L ->
             (l = Low -> nonceComp (Literal bs) L) ->
             Level l (Literal bs) L 
 
-        (* Paris are as Low as their components *)
         | Level_Pair: forall l t1 t2 L,
             Level l t1 L ->
             Level l t2 L ->
             Level l (Pair t1 t2) L
             
-        (* Honest Nonce are as Low as their payload *)
         | Level_NonceU: forall l n m L,
             canNonce n m L ->
             Level l m L ->
             Level l (Nonce n m) L
-        (* Dishonest Nonce are Low *)
         | Level_NonceU_Low: forall l n m L,
             Level Low n L ->
             Level Low m L ->
             Level l (Nonce n m) L.
     
-    (* Generic Invariants: Low is included in High. *)
     Theorem Low_High: forall t L,
         Level Low t L -> Level High t L.
     Proof.
@@ -213,7 +199,6 @@ Module CryptographicInvariants (PD: ProtocolDefs) (PI: ProtocolInvariants PD).
         - apply Level_NonceU_Low ; assumption.
     Qed.
 
-    (* Generic Invariants: Level is stable. *)
     Theorem Level_Stable: forall l t L L',
         leq_log L L' -> Level l t L ->
         Level l t L'.
@@ -233,7 +218,6 @@ Module CryptographicInvariants (PD: ProtocolDefs) (PI: ProtocolInvariants PD).
         - apply Level_NonceU_Low ; firstorder.
     Qed.
 
-    (* Generic Invariants: Distinct usages are absurd *)
     Theorem AbsurdDistinctUsages : forall P L t u u',
         GoodLog L ->
         u <> u' ->
@@ -249,7 +233,6 @@ Module CryptographicInvariants (PD: ProtocolDefs) (PI: ProtocolInvariants PD).
         exfalso. tauto.
     Qed.
 
-    (* Generic Invariants: Level inversion. *)
     Theorem LowNonce_Inversion : forall L n nu,
         GoodLog L ->
         Logged (New (Literal n) (Nonce_U nu)) L ->
@@ -282,7 +265,7 @@ Import BabelLightDefs.
 Include CryptographicInvariants BabelLightDefs BabelLightInvariants.
 Import BabelLightInvariants.
 
-Theorem ChallengeRequestCorrespondance: forall a b n0 msg L,
+Theorem ChallengeRequestCorrespondence: forall a b n0 msg L,
     GoodLog L -> ExchangeAB a b n0 msg L ->
     forall l t, l = Low -> t = Nonce n0 (Pair (Literal (String TagChallengeRequest EmptyString)) (Pair n0 msg)) ->
     Level l t L -> LoggedP (ChallengeRequest a b n0 msg) L \/ LoggedP (Bad a) L.
@@ -324,7 +307,7 @@ Proof.
             unfold ExchangeABComp in HnonceComp_ExchABComp. rewrite Ha. assumption.
 Qed.
 
-Theorem ChallengeReplyCorrespondance: forall a b n0 msg L,
+Theorem ChallengeReplyCorrespondence: forall a b n0 msg L,
     GoodLog L -> ExchangeAB a b n0 msg L ->
     forall l t, l = Low -> t = Nonce n0 (Pair (Literal (String TagChallengeReply EmptyString)) n0) ->
     Level l t L -> LoggedP (ChallengeReply a b n0) L \/ LoggedP (Bad a) L.
