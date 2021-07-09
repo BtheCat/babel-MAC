@@ -102,6 +102,47 @@ Module ERPCDefs <: ProtocolDefs.
     Definition pEvent := pEvent'.
 End ERPCDefs.
 
+(* 
+    Protocol Example: Otway-Rees Protocol 
+        i       : ni = fresh()
+        i -> r  : i | ni
+        r       : nr = fresh()
+        r -> s  : i | r | ni | nr
+        s       : kir = keygen()
+        s       : Log(Initiator(i, ni, kir, r))
+        s       : Log(Responder(r, nr, kir, i))
+        s -> r  : senc(ki, i | r | kir | ni) | senc(kr, i | r | kir | nr)
+        r       : Log(Responder(i, nr, kir, r))
+        r -> i  : senc(ki, i | r | kir | ni)
+        i       : assert(Initiator(i, ni, kir, r))
+*)
+
+Module OtwayReesDefs <: ProtocolDefs.
+    Parameter TagRequest: ascii.
+    Parameter TagResponse: ascii.
+    Parameter TagsDistinct: TagRequest <> TagResponse.
+    
+    Definition nonce_usage := False.
+    Definition sign_usage := False.
+    Definition enc_usage := False.
+
+    Inductive hmac_usage' :=
+        | U_KeyAB (a b: term).
+    Definition hmac_usage := hmac_usage'.
+
+    Inductive senc_usage' :=
+        | U_SKeyAB (p: term).
+    Definition senc_usage := senc_usage'.
+
+    Inductive pEvent' :=
+        | Request (a b req: term)
+        | Response (a b req resp: term)
+        | Initiator (p np kpb b: term)
+        | Responder (p np kap a: term)
+        | Bad (p: term).
+    Definition pEvent := pEvent'.    
+End OtwayReesDefs.
+
 (* General Usages and Events *)
 
 Module Defs (PD : ProtocolDefs).
@@ -239,7 +280,7 @@ Module RPCInvariants <: ProtocolInvariants RPCDefs.
         intros k p. unfold Stable. intros L L'.
         unfold leq_log. unfold canHmac. unfold KeyAB. unfold KeyABPayload. unfold LoggedP.
         intros Hleq_log HcanHmacL.
-        destruct HcanHmacL as (a, HcanHmacLa). destruct HcanHmacLa as (b, HcanHmacLab).
+        destruct HcanHmacL as (a, HcanHmacL_a). destruct HcanHmacL_a as (b, HcanHmacL_ab).
         exists a. exists b. firstorder.
     Qed.
 
@@ -430,6 +471,139 @@ Module ERPCInvariants <: ProtocolInvariants ERPCDefs.
     Qed.
 End ERPCInvariants.
 
+Module OtwayReesInvariants <: ProtocolInvariants OtwayReesDefs.
+    Import OtwayReesDefs.
+    Include Defs OtwayReesDefs.
+
+    Definition LogInvariant L :=
+        forall t u, Logged (New t u) L -> (exists bs, t = Literal bs).
+
+    Definition KeyAB a b k L := 
+        Logged (New k (HMacKey (U_KeyAB a b))) L.
+
+    Definition KeyABComp a b L :=
+        LoggedP (Bad a) L \/ LoggedP (Bad b) L.
+
+    Definition hmacComp k L := 
+        exists a, exists b, KeyAB a b k L /\ KeyABComp a b L.
+    
+    Theorem hmacComp_Stable: 
+        forall t, Stable (hmacComp t).
+    Proof.
+        intro t. unfold Stable. intros L L'.
+        unfold leq_log. unfold hmacComp. unfold KeyAB. unfold KeyABComp. unfold LoggedP.
+        firstorder.
+    Qed.
+
+    Definition KeyABPayload a b p L := 
+        (exists req,
+            p = Pair (Literal (String TagRequest EmptyString)) req /\
+            LoggedP (Request a b req) L) \/
+        (exists req, exists resp,
+            p = Pair (Literal (String TagResponse EmptyString)) (Pair req resp) /\
+            LoggedP (Response a b req resp) L).
+    
+    Definition canHmac k p L := 
+        exists a, exists b, KeyAB a b k L /\ KeyABPayload a b p L.
+    
+    Theorem canHmac_Stable:
+        forall k p, Stable (canHmac k p).
+    Proof.
+        intros k p. unfold Stable. intros L L'.
+        unfold leq_log. unfold canHmac. unfold KeyAB. unfold KeyABPayload. unfold LoggedP.
+        intros Hleq_log HcanHmacL.
+        destruct HcanHmacL as (a, HcanHmacL_a). destruct HcanHmacL_a as (b, HcanHmacL_ab).
+        exists a. exists b. firstorder.
+    Qed.
+
+    Definition PrinKeyAB p k L := 
+        Logged (New k (SEncKey (U_SKeyAB p))) L.
+
+    Definition PrinKeyComp p (k: term) L :=
+        LoggedP (Bad p) L.
+
+    Definition sencComp k L :=
+        exists p, PrinKeyAB p k L /\ PrinKeyComp p k L.
+
+    Theorem sencComp_Stable: 
+        forall t, Stable (sencComp t).
+    Proof.
+        intro t. unfold Stable. intros L L'.
+        unfold leq_log. unfold sencComp. unfold PrinKeyAB. unfold PrinKeyComp. unfold LoggedP.
+        firstorder.
+    Qed.
+
+    Definition PrinKeyPayload p m L:= 
+        (exists b, exists np, exists kpb,
+            p <> b /\
+            m = Pair p (Pair kpb np) /\
+            KeyAB p b kpb L /\
+            LoggedP (Initiator p np kpb b) L) \/
+        (exists a, exists np, exists kap,
+            p <> a /\
+            m = Pair p (Pair kap np) /\
+            KeyAB a p kap L /\
+            LoggedP (Responder p np kap a) L).
+
+    Definition canSEnc k m L := 
+        exists p, PrinKeyAB p k L /\ PrinKeyPayload p m L.
+    
+    Theorem canSEnc_Stable:
+        forall k m, Stable (canSEnc k m).
+    Proof.
+        intros k m. unfold Stable. intros L L'.
+        unfold leq_log. unfold canSEnc. unfold PrinKeyAB. unfold PrinKeyPayload. unfold LoggedP.
+        intros Hleq_log HcanSEncL. destruct HcanSEncL as (p, HcanSEncL_p).
+        destruct HcanSEncL_p as (HcanSEncL_log & HcanSEncL_keys).
+        exists p. split.
+        - firstorder.
+        - destruct HcanSEncL_keys as [HcanSEncL_keys_init | HcanSEncL_keys_resp].
+            * left. destruct HcanSEncL_keys_init as (b, HcanSEncL_keys_init_b). 
+                destruct HcanSEncL_keys_init_b as (np, HcanSEncL_keys_init_bnp).
+                destruct HcanSEncL_keys_init_bnp as (kpb, HcanSEncL_keys_init_bnpkpb).
+                exists b. exists np. exists kpb. firstorder.
+            * right. destruct HcanSEncL_keys_resp as (a, HcanSEncL_keys_resp_a).
+                destruct HcanSEncL_keys_resp_a as (np, HcanSEncL_keys_resp_anp).
+                destruct HcanSEncL_keys_resp_anp as (kap, HcanSEncL_keys_resp_anpkap).
+                exists a. exists np. exists kap. firstorder. 
+    Qed.
+    
+    Definition nonceComp (_: term) (_: log) := False.
+    Definition sigComp (_: term) (_: log) := False.
+    Definition canSign (_ _: term) (_: log) := False.
+    Definition encComp (_: term) (_: log) := False.
+    Definition canEnc (_ _: term) (_: log) := False.
+
+    Theorem nonceComp_Stable: 
+        forall t, Stable (nonceComp t).
+    Proof. 
+        firstorder.
+    Qed.
+
+    Theorem sigComp_Stable:
+        forall t, Stable (sigComp t).
+    Proof.
+        firstorder.
+    Qed. 
+
+    Theorem canSign_Stable:
+        forall k p, Stable (canSign k p).
+    Proof.
+        firstorder.
+    Qed.
+
+    Theorem encComp_Stable:
+        forall t, Stable (encComp t).
+    Proof.
+        firstorder.
+    Qed. 
+
+    Theorem canEnc_Stable:
+        forall k p, Stable (canEnc k p).
+    Proof.
+        firstorder.
+    Qed.
+End OtwayReesInvariants.
 
 Module CryptographicInvariants (PD: ProtocolDefs) (PI: ProtocolInvariants PD).
     Include PI.
