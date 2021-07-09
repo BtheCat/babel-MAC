@@ -536,12 +536,12 @@ Module OtwayReesInvariants <: ProtocolInvariants OtwayReesDefs.
     Definition PrinKeyPayload p m L:= 
         (exists b, exists np, exists kpb,
             p <> b /\
-            m = Pair p (Pair kpb np) /\
+            m = Pair p (Pair b (Pair kpb np)) /\
             KeyAB p b kpb L /\
             LoggedP (Initiator p np kpb b) L) \/
         (exists a, exists np, exists kap,
             p <> a /\
-            m = Pair p (Pair kap np) /\
+            m = Pair a (Pair p (Pair kap np)) /\
             KeyAB a p kap L /\
             LoggedP (Responder p np kap a) L).
 
@@ -1245,3 +1245,224 @@ Module ERPCTheorems.
             apply HGL_WL_Usage in HSessionKey ; try assumption. discriminate.
     Qed.
 End ERPCTheorems.
+
+Module OtwayReesTheorems.
+    Import OtwayReesDefs.
+    Include CryptographicInvariants OtwayReesDefs OtwayReesInvariants.
+    Import OtwayReesInvariants.
+
+    Theorem RequestCorrespondence: forall a b k req L,
+        GoodLog L -> KeyAB a b k L ->
+        forall l t, l = Low -> t = (HMac k (Pair (Literal (String TagRequest EmptyString)) req)) -> 
+        Level l t L ->
+        LoggedP (Request a b req) L \/
+        LoggedP (Bad a) L \/ LoggedP (Bad b) L.
+    Proof.
+        intros a b k req L. unfold KeyAB. 
+        intros HGoodLog HKeyAB. intros l t. intros Hlow Hhmac Hlevel. 
+        assert ( HGoodLog_bis : GoodLog L ). assumption.
+        unfold GoodLog in HGoodLog. destruct HGoodLog as (HGL_WfLog & HGL_LogInv).
+        unfold WF_Log in HGL_WfLog. destruct HGL_WfLog as (HGL_WL_Usage & _).
+        unfold LogInvariant in HGL_LogInv. induction Hlevel ; try discriminate.
+        - left. injection Hhmac. intros Hm Hk0. rewrite Hk0 in H. unfold canHmac in H.
+            destruct H as (a0, Ha). destruct Ha as (b0, Hab). destruct Hab as (Hab_key & Hab_keyPayload).
+            unfold KeyAB in Hab_key. specialize HGL_WL_Usage with (t:=k) (u:=HMacKey (U_KeyAB a b)) (u':=HMacKey (U_KeyAB a0 b0)).
+            apply HGL_WL_Usage in HKeyAB ; try assumption. injection HKeyAB. intros Hb Ha.
+            unfold KeyABPayload in Hab_keyPayload. destruct Hab_keyPayload as [Hab_KP_req | Hab_KP_reqresp].
+            + destruct Hab_KP_req as (req0, Hab_KP_req). destruct Hab_KP_req as (Hab_KP_req_m & Hab_KP_req_log).
+                symmetry in Hm. rewrite Hab_KP_req_m in Hm. injection Hm. intro Hreq.
+                rewrite Ha. rewrite Hb. rewrite Hreq. assumption.
+            +  exfalso. destruct Hab_KP_reqresp as (req0, Hab_KP_req). destruct Hab_KP_req as (resp0, Hab_KP_reqresp).
+                destruct Hab_KP_reqresp as (Hab_KP_reqresp_m & _). symmetry in Hm. rewrite Hab_KP_reqresp_m in Hm. 
+                injection Hm. intros _ Htag.
+                assert ( HtagDistinct : TagRequest <> TagResponse ). apply TagsDistinct. 
+                tauto.
+        - right. injection Hhmac. intros Hm Hk0.
+            specialize HGL_LogInv with (t:=k) (u:=HMacKey (U_KeyAB a b)). 
+            assert ( Hlog : Logged (New k (HMacKey (U_KeyAB a b))) L ). assumption.
+            apply HGL_LogInv in HKeyAB. destruct HKeyAB as (bs, HLitk).
+            assert ( HhmacComp : hmacComp (Literal bs) L ).
+            + apply LowHmacKeyLiteral_Inversion with (hu:=U_KeyAB a b) (l:=Low) (t:=Literal bs) ; try easy.
+                * rewrite HLitk in Hlog. assumption.
+                * rewrite Hk0 in Hlevel1. rewrite HLitk in Hlevel1. assumption.
+            + unfold hmacComp in HhmacComp. destruct HhmacComp as (a0, HhmacComp_a). destruct HhmacComp_a as (b0, HhmacComp_ab).
+                destruct HhmacComp_ab as (HHC_ab_key & HHC_ab_keyComp). unfold KeyAB in HHC_ab_key.
+                rewrite HLitk in Hlog. specialize HGL_WL_Usage with (t:=Literal bs) (u:=HMacKey (U_KeyAB a b)) (u':=HMacKey (U_KeyAB a0 b0)).
+                apply HGL_WL_Usage in HHC_ab_key ; try assumption. injection HHC_ab_key.
+                intros Hb Ha. rewrite Hb. rewrite Ha. unfold KeyABComp in HHC_ab_keyComp. assumption.
+    Qed.
+
+    Theorem ResponseCorrespondence: forall a b k req resp L,
+        GoodLog L -> KeyAB a b k L ->
+        forall l t, l = Low -> t = (HMac k (Pair (Literal (String TagResponse EmptyString)) (Pair req resp))) ->
+        Level l t L ->
+        LoggedP (Response a b req resp) L \/
+        LoggedP (Bad a) L \/ LoggedP (Bad b) L.
+    Proof.
+        intros a b k req resp L. unfold KeyAB.
+        intros HGoodLog HKeyAB. intros l t. intros Hlow Hhmac Hlevel. 
+        assert ( HGoodLog_bis : GoodLog L ). assumption.
+        unfold GoodLog in HGoodLog. destruct HGoodLog as (HGL_WfLog & HGL_LogInv).
+        unfold WF_Log in HGL_WfLog. destruct HGL_WfLog as (HGL_WL_Usage & _).
+        unfold LogInvariant in HGL_LogInv. induction Hlevel ; try discriminate.
+        - left. injection Hhmac. intros Hm Hk0. rewrite Hk0 in H. unfold canHmac in H.
+            destruct H as (a0, Ha). destruct Ha as (b0, Hab). destruct Hab as (Hab_key & Hab_keyPayload).
+            unfold KeyAB in Hab_key. specialize HGL_WL_Usage with (t:=k) (u:=HMacKey (U_KeyAB a b)) (u':=HMacKey (U_KeyAB a0 b0)).
+            apply HGL_WL_Usage in HKeyAB ; try assumption. injection HKeyAB. intros Hb Ha.
+            unfold KeyABPayload in Hab_keyPayload. destruct Hab_keyPayload as [Hab_KP_req | Hab_KP_reqresp].
+            + exfalso. destruct Hab_KP_req as (req0, hab_KP_req). destruct hab_KP_req as (Hab_KP_req_m & _).
+                symmetry in Hm. rewrite Hab_KP_req_m in Hm. injection Hm. intros _ Htag.
+                assert ( HtagDistinct : TagRequest <> TagResponse ). apply TagsDistinct. firstorder.
+            + destruct Hab_KP_reqresp as (req0, hab_KP_req). destruct hab_KP_req as (resp0, Hab_KP_reqresp).
+                destruct Hab_KP_reqresp as (Hab_KP_reqresp_m & Hab_KP_reqresp_log). symmetry in Hm. rewrite Hab_KP_reqresp_m in Hm. 
+                injection Hm. intros Hresp Hreq. rewrite Ha. rewrite Hb. rewrite Hreq. rewrite Hresp. assumption.
+        - right. injection Hhmac. intros Hm Hk0.
+            specialize HGL_LogInv with (t:=k) (u:=HMacKey (U_KeyAB a b)).
+            assert ( Hlog : Logged (New k (HMacKey (U_KeyAB a b))) L ). assumption.
+            apply HGL_LogInv in HKeyAB. destruct HKeyAB as (bs, HLitk).
+            assert ( HhmacComp : hmacComp (Literal bs) L).
+            + apply LowHmacKeyLiteral_Inversion with (hu:=U_KeyAB a b) (l:=Low) (t:=Literal bs) ; try easy.
+                * rewrite HLitk in Hlog. assumption.
+                * rewrite Hk0 in Hlevel1. rewrite HLitk in Hlevel1. assumption.
+            + unfold hmacComp in HhmacComp. destruct HhmacComp as (a0, HhmacComp_a). destruct HhmacComp_a as (b0, HhmacComp_ab).
+                destruct HhmacComp_ab as (HHC_ab_key & HHC_ab_keyComp). unfold KeyAB in HHC_ab_key.
+                rewrite HLitk in Hlog. specialize HGL_WL_Usage with (t:=Literal bs) (u:=HMacKey (U_KeyAB a b)) (u':=HMacKey (U_KeyAB a0 b0)).
+                apply HGL_WL_Usage in HHC_ab_key ; try assumption. injection HHC_ab_key.
+                intros Hb Ha. rewrite Hb. rewrite Ha. unfold KeyABComp in HHC_ab_keyComp. assumption. 
+    Qed.
+
+    Theorem KeySecrecy: forall a b k L,
+        GoodLog L -> KeyAB a b k L -> 
+        forall l, l = Low -> Level l k L ->
+        LoggedP (Bad a) L \/ LoggedP (Bad b) L.
+    Proof.
+        intros a b k L. unfold KeyAB.
+        intros HGoodLog HKeyAB. intro l. intros Hlow Hlevel. 
+        unfold GoodLog in HGoodLog. destruct HGoodLog as (HGL_WfLog & HGL_LogInv).
+        unfold WF_Log in HGL_WfLog. destruct HGL_WfLog as (HGL_WL_Usage & _).
+        unfold LogInvariant in HGL_LogInv. specialize HGL_LogInv with (t:=k) (u:=HMacKey (U_KeyAB a b)).
+        assert ( HKeyAB_bis : Logged (New k (HMacKey (U_KeyAB a b))) L ). assumption.
+        apply HGL_LogInv in HKeyAB_bis. destruct HKeyAB_bis as (bs, HLitk).
+        induction k ; try discriminate. induction Hlevel ; try discriminate.
+        - specialize HGL_WL_Usage with (t:=Literal bs0) (u:=AdversaryGuess) (u':=HMacKey (U_KeyAB a b)).
+            apply HGL_WL_Usage in HKeyAB ; try assumption. discriminate.
+        - specialize HGL_WL_Usage with (t:=Literal bs0) (u:=Nonce nu) (u':=HMacKey (U_KeyAB a b)).
+            apply HGL_WL_Usage in HKeyAB ; try assumption. discriminate.
+        - apply H0 in Hlow. unfold hmacComp in Hlow. destruct Hlow as (a', Hlow_a). destruct Hlow_a as (b', Hlow_ab).
+            destruct Hlow_ab as (Hab_key & Hab_keyComp). unfold KeyAB in Hab_key.
+            specialize HGL_WL_Usage with (t:=Literal bs0) (u:=HMacKey (U_KeyAB a b)) (u':=HMacKey (U_KeyAB a' b')).
+            apply HGL_WL_Usage in Hab_key ; try assumption. injection Hab_key.
+            intros Hb Ha. rewrite Ha. rewrite Hb. unfold KeyABComp in Hab_keyComp. assumption.
+        - specialize HGL_WL_Usage with (t:=Literal bs0) (u:=SEncKey su) (u':=HMacKey (U_KeyAB a b)).
+            apply HGL_WL_Usage in HKeyAB ; try assumption. discriminate.
+        - specialize HGL_WL_Usage with (t:=Literal bs0) (u:=SignKey su) (u':=HMacKey (U_KeyAB a b)).
+            apply HGL_WL_Usage in HKeyAB ; try assumption. discriminate.
+        - specialize HGL_WL_Usage with (t:=Literal bs0) (u:=VerfKey su) (u':=HMacKey (U_KeyAB a b)).
+            apply HGL_WL_Usage in HKeyAB ; try assumption. discriminate.
+        - specialize HGL_WL_Usage with (t:=Literal bs0) (u:=EncKey eu) (u':=HMacKey (U_KeyAB a b)).
+            apply HGL_WL_Usage in HKeyAB ; try assumption. discriminate.
+        - specialize HGL_WL_Usage with (t:=Literal bs0) (u:=DecKey eu) (u':=HMacKey (U_KeyAB a b)).
+            apply HGL_WL_Usage in HKeyAB ; try assumption. discriminate.
+    Qed.
+
+    Theorem KeyedHMac_Inversion: forall hu k p L,
+        GoodLog L -> Logged (New k (HMacKey hu)) L ->
+        forall l t, l = High -> t = HMac k p -> Level l t L ->
+        canHmac k p L \/ hmacComp k L.
+    Proof.
+        intros hu k p L. intros HGoodLog Hlog. intros l t. intros Hhigh Hhmac Hlevel.
+        assert ( HGoodLog_bis : GoodLog L ). assumption.
+        unfold GoodLog in HGoodLog. destruct HGoodLog as (HGL_WfLog & HGL_LogInv).
+        unfold WF_Log in HGL_WfLog. destruct HGL_WfLog as (HGL_WL_Usage & _).
+        unfold LogInvariant in HGL_LogInv. induction Hlevel ; try discriminate.
+        - left. injection Hhmac. intros Hm Hk0. rewrite Hm in H. rewrite Hk0 in H. assumption.
+        - right. injection Hhmac. intros _ Hk0. rewrite Hk0 in Hlevel1.
+            specialize HGL_LogInv with (t:=k) (u:=HMacKey hu).
+            assert ( Hlog_bis : Logged (New k (HMacKey hu)) L ). assumption.
+            apply HGL_LogInv in Hlog_bis. destruct Hlog_bis as (bs, HLitk).
+            rewrite HLitk. apply LowHmacKeyLiteral_Inversion with (hu:=hu) (l:=Low) (t:=Literal bs) ; try easy.
+            + rewrite HLitk in Hlog. assumption.
+            + rewrite HLitk in Hlevel1. assumption.
+    Qed.
+
+    Theorem InitiatorCorrespondence: forall a b ka na kab L,
+        GoodLog L -> (a <> b) -> PrinKeyAB a ka L ->
+        forall l t, l = Low -> t = SEnc ka (Pair a (Pair b (Pair kab na))) -> Level l t L ->
+        KeyAB a b kab L \/ LoggedP (Bad a) L.
+    Proof.
+        intros a b ka na kab L. intros HGoodLog Hanotb HprinKeyAB.
+        intros l t. intros Hlow Hsenc Hlevel. assert ( HGoodLog_bis : GoodLog L ). assumption.
+        unfold GoodLog in HGoodLog. destruct HGoodLog as (HGL_WfLog & HGL_LogInv).
+        unfold WF_Log in HGL_WfLog. destruct HGL_WfLog as (HGL_WL_Usage & _).
+        unfold LogInvariant in HGL_LogInv. unfold PrinKeyAB in HprinKeyAB.
+        induction Hlevel ; try discriminate.
+        - left. injection Hsenc. intros Hp Hk. unfold canSEnc in H.
+            destruct H as (p0, Hp0). destruct Hp0 as (HprinKey & HprinKeyPayload).
+            rewrite Hk in HprinKey. unfold PrinKeyAB in HprinKey.
+            specialize HGL_WL_Usage with (t:=ka) (u:=SEncKey (U_SKeyAB a)) (u':=SEncKey (U_SKeyAB p0)).
+            apply HGL_WL_Usage in HprinKeyAB ; try assumption. injection HprinKeyAB. intro Ha.
+            unfold PrinKeyPayload in HprinKeyPayload. destruct HprinKeyPayload as [HpKP_init | HpKP_resp].
+            * destruct HpKP_init as (b0, HpKP_init_b). destruct HpKP_init_b as (np0, HpKP_init_bnp).
+                destruct HpKP_init_bnp as (kpb0, HpKP_init_bnpkpb). destruct HpKP_init_bnpkpb as (_ & HpKP_init_bnpkpb).
+                destruct HpKP_init_bnpkpb as (Hp_bis & HpKP_init_bnpkpb).
+                symmetry in Hp_bis. rewrite Hp in Hp_bis. injection Hp_bis.
+                intros _ Hkpb0 Hb0 _. destruct HpKP_init_bnpkpb as (HpKP_init_key & _).
+                rewrite Ha. rewrite <- Hb0. rewrite <- Hkpb0. assumption.
+            * exfalso. destruct HpKP_resp as (a0, HpKP_resp_a). destruct HpKP_resp_a as (np0, HpKP_resp_anp).
+                destruct HpKP_resp_anp as (kap0, HpKP_resp_anpkap). destruct HpKP_resp_anpkap as (Hpnota & HpKP_resp_anpkap).
+                destruct HpKP_resp_anpkap as (Hp_bis & _). symmetry in Hp_bis. rewrite Hp in Hp_bis.
+                injection Hp_bis. intros _ _ _ Ha0. rewrite Ha0 in Hpnota. firstorder.
+        - right. injection Hsenc. intros Hp Hk. rewrite Hk in Hlevel1.
+            specialize HGL_LogInv with (t:=ka) (u:=SEncKey (U_SKeyAB a)).
+            assert ( Hlog : Logged (New ka (SEncKey (U_SKeyAB a))) L ). assumption.
+            apply HGL_LogInv in Hlog. destruct Hlog as (bs, HLitka).
+            assert ( HsencComp : sencComp (Literal bs) L ).  
+            * rewrite HLitka in Hlevel1. apply LowSencKeyLiteral_Inversion with (su:=U_SKeyAB a) (l:=Low) (t:=Literal bs) ; try easy.
+                rewrite HLitka in HprinKeyAB. assumption.
+            * unfold sencComp in HsencComp. destruct HsencComp as (p0, HsencComp_p).
+                destruct HsencComp_p as (HSC_prinKey & HSC_prinKeyComp).
+                unfold PrinKeyAB in HSC_prinKey. unfold PrinKeyComp in HSC_prinKeyComp.
+                rewrite HLitka in HprinKeyAB. specialize HGL_WL_Usage with (t:=Literal bs) (u:=SEncKey (U_SKeyAB a)) (u':=SEncKey (U_SKeyAB p0)).
+                apply HGL_WL_Usage in HprinKeyAB ; try assumption. injection HprinKeyAB. intro Ha. rewrite Ha. assumption.
+    Qed.
+
+    Theorem ResponderCorrespondence: forall a b kb nb kab L,
+        GoodLog L -> (a <> b) -> PrinKeyAB b kb L ->
+        forall l t, l = Low -> t = SEnc kb (Pair a (Pair b (Pair kab nb))) -> Level l t L ->
+        KeyAB a b kab L \/ LoggedP (Bad b) L.
+    Proof.
+        intros a b kb nb kab L. intros HGoodLog Hanotb HprinKeyAB.
+        assert ( HGoodLog_bis : GoodLog L ). assumption.
+        unfold PrinKeyAB in HprinKeyAB. intros l t. intros Hlow Hsenc Hlevel.
+        unfold GoodLog in HGoodLog. destruct HGoodLog as (HGL_WfLog & HGL_LogInv).
+        unfold WF_Log in HGL_WfLog. destruct HGL_WfLog as (HGL_WL_Usage & _).
+        unfold LogInvariant in HGL_LogInv. induction Hlevel ; try discriminate.
+        - left. injection Hsenc. intros Hp Hk. rewrite Hk in H. unfold canSEnc in H.
+            destruct H as (p0, Hp0). destruct Hp0 as (HprinKey & HprinKeyPayload).
+            unfold PrinKeyAB in HprinKey. unfold PrinKeyPayload in HprinKeyPayload.
+            specialize HGL_WL_Usage with (t:=kb) (u:=SEncKey (U_SKeyAB b)) (u':=SEncKey (U_SKeyAB p0)).
+            apply HGL_WL_Usage in HprinKeyAB ; try assumption. injection HprinKeyAB. intro Hb.
+            destruct HprinKeyPayload as [HpKP_init | HpKP_resp].
+            * exfalso. destruct HpKP_init as (b0, HpKP_init_b). destruct HpKP_init_b as (np0, HpKP_init_bnp).
+                destruct HpKP_init_bnp as (kpb0, HpKP_init_bnpkpb). destruct HpKP_init_bnpkpb as (Hpnotb & HpKP_init_bnpkpb).
+                destruct HpKP_init_bnpkpb as (Hp_bis & _). symmetry in Hp_bis. rewrite Hp in Hp_bis. injection Hp_bis.
+                intros _ _ Hb0 Hp0. rewrite Hb in Hb0. firstorder.
+            * destruct HpKP_resp as (a0, HpKP_resp_a). destruct HpKP_resp_a as (np0, HpKP_resp_anp).
+                destruct HpKP_resp_anp as (kap0, HpKP_resp_anpkap). destruct HpKP_resp_anpkap as (_ & HpKP_resp_anpkap).
+                destruct HpKP_resp_anpkap as (Hp_bis & HpKP_resp_anpkap). destruct HpKP_resp_anpkap as (HKeyAB & _).
+                symmetry in Hp_bis. rewrite Hp in Hp_bis. injection Hp_bis. intros _ Hkap Hp0 Ha0.
+                rewrite <- Ha0. rewrite <- Hp0. rewrite <- Hkap. assumption.
+        - right. injection Hsenc. intros Hp Hk. rewrite Hk in Hlevel1.
+            specialize HGL_LogInv with (t:=kb) (u:=SEncKey (U_SKeyAB b)).
+            assert ( Hlog : Logged (New kb (SEncKey (U_SKeyAB b))) L ). assumption.
+            apply HGL_LogInv in Hlog. destruct Hlog as (bs, HLitka).
+            assert ( HsencComp : sencComp (Literal bs) L ).  
+            * rewrite HLitka in Hlevel1. apply LowSencKeyLiteral_Inversion with (su:=U_SKeyAB b) (l:=Low) (t:=Literal bs) ; try easy.
+                rewrite HLitka in HprinKeyAB. assumption.
+            * unfold sencComp in HsencComp. destruct HsencComp as (p0, HsencComp_p).
+                destruct HsencComp_p as (HSC_prinKey & HSC_prinKeyComp).
+                unfold PrinKeyAB in HSC_prinKey. unfold PrinKeyComp in HSC_prinKeyComp.
+                rewrite HLitka in HprinKeyAB. specialize HGL_WL_Usage with (t:=Literal bs) (u:=SEncKey (U_SKeyAB b)) (u':=SEncKey (U_SKeyAB p0)).
+                apply HGL_WL_Usage in HprinKeyAB ; try assumption. injection HprinKeyAB. intro Hb. rewrite Hb. assumption.
+    Qed.
+End OtwayReesTheorems.
