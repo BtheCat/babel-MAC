@@ -1317,12 +1317,44 @@ Module ERPCTheorems.
             apply HGL_WL_Usage in HSessionKey ; try assumption. discriminate.
     Qed.
 
-    Theorem RequestSecrecy: forall a b req k L,
+    Theorem RequestSecrecy: forall a b req L,
         GoodLog L -> RequestAB a b req L ->
-        forall l, l = Low -> Level l k L ->
+        forall l, l = Low -> Level l req L ->
         LoggedP (Bad a) L \/ LoggedP (Bad b) L.
     Proof.
-    Admitted.
+        intros a b req L. unfold RequestAB. intros HGoodLog Hrequest. intro l. intros Hlow Hlevel.
+        unfold GoodLog in HGoodLog. destruct HGoodLog as (HGL_WfLog & HGL_LogInv).
+        unfold WF_Log in HGL_WfLog. destruct HGL_WfLog as (HGL_WL_Usage & _).
+        unfold LogInvariant in HGL_LogInv. specialize HGL_LogInv with (t:=req) (u:=Nonce (U_RequestN a b)).
+        assert ( Hlog : Logged (New req (Nonce (U_RequestN a b))) L ). assumption.
+        apply HGL_LogInv in Hlog. destruct Hlog as (bs, HLitreq).
+        induction req ; try discriminate. induction Hlevel ; try discriminate.
+        - specialize HGL_WL_Usage with (t:=Literal bs0) (u:=Nonce (U_RequestN a b)) (u':=AdversaryGuess).
+            apply HGL_WL_Usage in Hrequest ; try assumption. discriminate.
+        - apply H0 in Hlow. unfold nonceComp in Hlow.
+            destruct Hlow as (a', Hlow_a). destruct Hlow_a as (b', Hlow_ab).
+            destruct Hlow_ab as [Hlow_req | Hlow_resp].
+            + destruct Hlow_req as (Hlow_req & Hlow_reqComp). unfold RequestN in Hlow_req.
+                specialize HGL_WL_Usage with (t:=Literal bs0) (u:=Nonce (U_RequestN a b)) (u':=Nonce (U_RequestN a' b')).
+                apply HGL_WL_Usage in Hrequest ; try assumption. injection Hrequest. intros Hb Ha.
+                unfold RequestNComp in Hlow_reqComp. rewrite <- Ha in Hlow_reqComp. rewrite <- Hb in Hlow_reqComp.
+                assumption.
+            + destruct Hlow_resp as (Hlow_resp & _). unfold ResponseN in Hlow_resp.
+                specialize HGL_WL_Usage with (t:=Literal bs0) (u:=Nonce (U_RequestN a b)) (u':=Nonce (U_ResponseN a' b')).
+                apply HGL_WL_Usage in Hrequest ; try assumption. discriminate.
+        - specialize HGL_WL_Usage with (t:=Literal bs0) (u:=Nonce (U_RequestN a b)) (u':=HMacKey hu).
+            apply HGL_WL_Usage in Hrequest ; try assumption. discriminate.
+        - specialize HGL_WL_Usage with (t:=Literal bs0) (u:=Nonce (U_RequestN a b)) (u':=SEncKey su).
+            apply HGL_WL_Usage in Hrequest ; try assumption. discriminate.
+        - specialize HGL_WL_Usage with (t:=Literal bs0) (u:=Nonce (U_RequestN a b)) (u':=SignKey su).
+            apply HGL_WL_Usage in Hrequest ; try assumption. discriminate.
+        - specialize HGL_WL_Usage with (t:=Literal bs0) (u:=Nonce (U_RequestN a b)) (u':=VerfKey su).
+            apply HGL_WL_Usage in Hrequest ; try assumption. discriminate.
+        - specialize HGL_WL_Usage with (t:=Literal bs0) (u:=Nonce (U_RequestN a b)) (u':=EncKey eu).
+            apply HGL_WL_Usage in Hrequest ; try assumption. discriminate.
+        - specialize HGL_WL_Usage with (t:=Literal bs0) (u:=Nonce (U_RequestN a b)) (u':=DecKey eu).
+            apply HGL_WL_Usage in Hrequest ; try assumption. discriminate.
+    Qed.
 End ERPCTheorems.
 
 Module OtwayReesTheorems.
