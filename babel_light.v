@@ -18,8 +18,10 @@
         b       : assert(ChallengeRequest(a, b, n0, msg))
         b       : Log(ChallengeReply(a, b, n0))
         b -> a  : ChallengeReply(a, b, n0)
-        a       : assert(ChallengeReply(a, b, n0))
+        a       : assert(ChallengeReply(a, b, n0, msg))
 *)
+
+
 
 Require Import String.
 Require Import Ascii.
@@ -43,13 +45,14 @@ Module BabelLightDefs <: ProtocolDefs.
     Parameter TagsDistinct: TagChallengeRequest <> TagChallengeReply.
 
     Inductive nonce_usage' :=
-        | Challenge (a b msg: term).
+        | ChallengeRequest (a b msg: term)
+        | ChallengeReply (a b msg: term).
     Definition nonce_usage := nonce_usage'.
 
     Inductive pEvent' :=
         | Msg (a b msg : term)
-        | ChallengeRequest (a b n0 msg: term)
-        | ChallengeReply (a b n0: term)
+        | Request (a b n0 msg: term)
+        | Reply (a b n0: term)
         | Bad (p: term).
     Definition pEvent := pEvent'.
 End BabelLightDefs.
@@ -92,8 +95,8 @@ Module Type ProtocolInvariants (PD: ProtocolDefs).
     Parameter nonceComp: term -> log -> Prop.
     Parameter nonceComp_Stable: forall t, Stable (nonceComp t).
 
-    Parameter canNonce : term -> term -> log -> Prop.
-    Parameter canNonce_Stable: forall n m, Stable (canNonce n m).
+    (*Parameter canNonce : term -> term -> log -> Prop.
+    Parameter canNonce_Stable: forall n m, Stable (canNonce n m).*)
 End ProtocolInvariants.
 
 Module BabelLightInvariants <: ProtocolInvariants BabelLightDefs.
@@ -103,7 +106,7 @@ Module BabelLightInvariants <: ProtocolInvariants BabelLightDefs.
     Definition LogInvariant L :=
         forall t u, Logged (New t u) L -> (exists bs, t = Literal bs).
 
-    Definition ExchangeAB a b n0 msg L :=
+    (*Definition ExchangeAB a b n0 msg L :=
         Logged (New n0 (Nonce_U (Challenge a b msg))) L.
 
     Definition ExchangeABComp p L :=
@@ -153,7 +156,7 @@ Module BabelLightInvariants <: ProtocolInvariants BabelLightDefs.
                 exists n0. exists msg0. firstorder.
             * right. destruct HlogL_abmsg_EABP_resp as (n0, HlogL_abmsg_EABP_resp_n0).
                 exists n0. firstorder.
-    Qed.
+    Qed.*)
 End BabelLightInvariants.
 
 Module CryptographicInvariants (PD: ProtocolDefs) (PI: ProtocolInvariants PD).
