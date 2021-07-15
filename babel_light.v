@@ -9,7 +9,7 @@
 *)
 
 (*
-    Protocol example : Light version of Babel-Mac Protocol
+    Protocol example : Light version of Babel-Mac Protocol (version 1)
         b       : Log(Msg(a, b, msg))
         b -> a  : Msg(a, b, msg)
         a       : assert(Msg(a, b, msg))
@@ -21,7 +21,18 @@
         a       : assert(ChallengeReply(a, b, n0, msg))
 *)
 
-
+(*
+    Protocol example: Light version of Babel-Mac Protocol (version 2)
+        b       : Log(Msg(a, b, msg))
+        b -> a  : Literal([TagMsg]) | msg
+        a       : assert(Msg(a, b, msg))
+        a       : Log(ChallengeRequest(a, b, n0, msg))
+        a -> b  : Literal([TagChallengeRequest]) | msg | n0
+        b       : assert(ChallengeRequest(a, b, n0, msg))
+        b       : Log(ChallengeReply(a, b, n0))
+        b -> a  : Literal([TagChallengeReply]) | n0
+        a       : assert(ChallengeReply(a, b, msg, n0))
+*)
 
 Require Import String.
 Require Import Ascii.
@@ -29,8 +40,7 @@ Require Import ListSet.
 
 Inductive term: Type :=
     | Literal (b: string)
-    | Pair (a: term) (b: term)
-    | Nonce (n: term) (p: term).
+    | Pair (a: term) (b: term).
 
 (* Signature: Protocol Usages and Events *)
 
@@ -40,9 +50,12 @@ Module Type ProtocolDefs.
 End ProtocolDefs.
 
 Module BabelLightDefs <: ProtocolDefs.
+    Parameter TagMsg: ascii.
     Parameter TagChallengeRequest: ascii.
     Parameter TagChallengeReply: ascii.
-    Parameter TagsDistinct: TagChallengeRequest <> TagChallengeReply.
+    Parameter TagsDistinct: (TagChallengeRequest <> TagChallengeReply) 
+                            /\ (TagChallengeRequest <> TagMsg)
+                            /\ (TagChallengeReply <> TagMsg).
 
     Inductive nonce_usage' :=
         | ChallengeRequest (a b msg: term)
@@ -52,7 +65,7 @@ Module BabelLightDefs <: ProtocolDefs.
     Inductive pEvent' :=
         | Msg (a b msg : term)
         | Request (a b n0 msg: term)
-        | Reply (a b n0: term)
+        | Reply (a b n0 msg: term)
         | Bad (p: term).
     Definition pEvent := pEvent'.
 End BabelLightDefs.
@@ -62,7 +75,7 @@ Module Defs (PD : ProtocolDefs).
 
     Inductive usage: Type :=
         | AdversaryGuess
-        | Nonce_U (nu: nonce_usage).
+        | Nonce (nu: nonce_usage).
 
     Inductive event: Type :=
         | New (t: term) (u: usage)
@@ -105,6 +118,39 @@ Module BabelLightInvariants <: ProtocolInvariants BabelLightDefs.
 
     Definition LogInvariant L :=
         forall t u, Logged (New t u) L -> (exists bs, t = Literal bs).
+
+    Definition RequestNComp a b L :=
+        LoggedP (Bad a) L \/ LoggedP (Bad b) L.
+    
+    Definition RequestN a b n msg L :=
+        Logged (New n (Nonce (ChallengeRequest a b msg))) L.
+
+    Definition ResponseNComp a b L := 
+        LoggedP (Bad a) L \/ LoggedP (Bad b) L.
+    
+    Definition ResponseN a b n msg L := 
+        Logged (New n (Nonce (ChallengeReply a b msg))) L.
+        
+    Definition nonceComp n L := 
+        exists a, exists b, exists msg, (RequestN a b n msg L /\ RequestNComp a b L)
+            \/ (ResponseN a b n msg L /\ ResponseNComp a b L).
+
+    Definition nonceComp_Stable:
+        forall t, Stable (nonceComp t).
+    Proof.
+        intro t. unfold Stable. intros L L'.
+        unfold leq_log. unfold nonceComp. unfold RequestN. unfold RequestNComp.
+        unfold ResponseN. unfold ResponseNComp. unfold LoggedP.
+        intros Hleq_log HnonceCompL. destruct HnonceCompL as (a, HnonceCompL_a).
+        destruct HnonceCompL_a as (b, HnonceCompL_ab). destruct HnonceCompL_ab as (msg, HnonceCompL_abmsg).
+        exists a. exists b. exists msg. firstorder.
+    Qed.   
+
+    Definition RequestAB a b n msg L :=
+        Logged (New n (Nonce (ChallengeRequest a b msg))) L.
+
+    Definition ResponseAB a b n msg L :=
+        Logged (New n (Nonce (ChallengeReply a b msg))) L. 
 
     (*Definition ExchangeAB a b n0 msg L :=
         Logged (New n0 (Nonce_U (Challenge a b msg))) L.
@@ -172,7 +218,7 @@ Module CryptographicInvariants (PD: ProtocolDefs) (PI: ProtocolInvariants PD).
             Level l (Literal bs) L
 
         | Level_Nonce: forall l bs L nu,
-            Logged (New (Literal bs) (Nonce_U nu)) L ->
+            Logged (New (Literal bs) (Nonce nu)) L ->
             (l = Low -> nonceComp (Literal bs) L) ->
             Level l (Literal bs) L 
 
@@ -181,14 +227,14 @@ Module CryptographicInvariants (PD: ProtocolDefs) (PI: ProtocolInvariants PD).
             Level l t2 L ->
             Level l (Pair t1 t2) L
             
-        | Level_NonceU: forall l n m L,
+        (*| Level_NonceU: forall l n m L,
             canNonce n m L ->
             Level l m L ->
             Level l (Nonce n m) L
         | Level_NonceU_Low: forall l n m L,
             Level Low n L ->
             Level Low m L ->
-            Level l (Nonce n m) L.
+            Level l (Nonce n m) L*).
     
     Theorem Low_High: forall t L,
         Level Low t L -> Level High t L.
@@ -196,10 +242,10 @@ Module CryptographicInvariants (PD: ProtocolDefs) (PI: ProtocolInvariants PD).
         intros t L. intro Hlow.
         induction Hlow.
         - apply Level_AdversaryGuess. assumption.
-        - apply Level_Nonce with (nu:=nu) ; try assumption. easy. 
+        - apply Level_Nonce with (nu:=nu) ; try assumption. easy.
         - apply Level_Pair ; assumption.
-        - apply Level_NonceU ; assumption.
-        - apply Level_NonceU_Low ; assumption.
+        (*- apply Level_NonceU ; assumption.
+        - apply Level_NonceU_Low ; assumption.*)
     Qed.
 
     Theorem Level_Stable: forall l t L L',
@@ -212,13 +258,13 @@ Module CryptographicInvariants (PD: ProtocolDefs) (PI: ProtocolInvariants PD).
             specialize Hleq_log with (e:=(New (Literal bs) AdversaryGuess)). auto.
         - apply Level_Nonce with (nu:=nu). 
             * unfold leq_log in Hleq_log.
-                specialize Hleq_log with (e:=(New (Literal bs) (Nonce_U nu))). auto.
+                specialize Hleq_log with (e:=(New (Literal bs) (Nonce nu))). auto.
             * intro Hllow. apply H0 in Hllow. 
                 assert ( Hstable : Stable (nonceComp (Literal bs)) ). apply nonceComp_Stable. firstorder.
         - apply Level_Pair ; firstorder.
-        - apply Level_NonceU ; try auto.
+        (*- apply Level_NonceU ; try auto.
             assert ( HStable : Stable (canNonce n m) ). apply canNonce_Stable. firstorder.
-        - apply Level_NonceU_Low ; firstorder.
+        - apply Level_NonceU_Low ; firstorder.*)
     Qed.
 
     Theorem AbsurdDistinctUsages : forall P L t u u',
@@ -238,7 +284,7 @@ Module CryptographicInvariants (PD: ProtocolDefs) (PI: ProtocolInvariants PD).
 
     Theorem LowNonce_Inversion : forall L n nu,
         GoodLog L ->
-        Logged (New (Literal n) (Nonce_U nu)) L ->
+        Logged (New (Literal n) (Nonce nu)) L ->
         forall l t, l = Low -> t = Literal n -> Level l t L ->
         nonceComp (Literal n) L.
     Proof.
@@ -246,14 +292,28 @@ Module CryptographicInvariants (PD: ProtocolDefs) (PI: ProtocolInvariants PD).
         unfold GoodLog in HGoodLog. destruct HGoodLog as (HGL_WfLog & _).
         unfold WF_Log in HGL_WfLog.
         induction Hlevel ; try discriminate. 
-        - exfalso. specialize HGL_WfLog with (t:=Literal n) (u:=Nonce_U nu) (u':=AdversaryGuess).
+        - exfalso. specialize HGL_WfLog with (t:=Literal n) (u:=Nonce nu) (u':=AdversaryGuess).
             apply HGL_WfLog in Hlog ; try assumption. 
             + discriminate. 
             + rewrite HLit. assumption. 
-        - firstorder. rewrite HLit. assumption.
+        - apply H0 in Hlow. rewrite <- HLit in Hlow. assumption.
     Qed.
 
-    Theorem Nonce_Inversion : forall L l n m,
+    Theorem LowPair_Inversion: forall L t1 t2,
+        GoodLog L ->
+        forall l t, l = Low -> t = Pair t1 t2 -> Level l t L ->
+        Level Low t1 L /\ Level Low t2 L.
+    Proof.
+        intros L t1 t2. intro HGoodLog. intros l t. intros Hlow Hterm Hlevel.
+        unfold GoodLog in HGoodLog. destruct HGoodLog as (HGL_WfLog & _).
+        unfold WF_Log in HGL_WfLog.
+        induction Hlevel ; try discriminate. 
+        injection Hterm. intros Ht3 Ht0. split.
+        - rewrite Hlow in Hlevel1. rewrite Ht0 in Hlevel1. assumption.
+        - rewrite Hlow in Hlevel2. rewrite Ht3 in Hlevel2. assumption.
+    Qed.
+
+    (*Theorem Nonce_Inversion : forall L l n m,
         forall t, t = Nonce n m -> Level l t L ->
         canNonce n m L \/ Level Low n L.
     Proof.
@@ -261,7 +321,7 @@ Module CryptographicInvariants (PD: ProtocolDefs) (PI: ProtocolInvariants PD).
         induction Hlevel ; try discriminate.
         - left. injection Hnonce. intros Hm0 Hn0. rewrite Hm0 in H. rewrite Hn0 in H. assumption.
         - right. injection Hnonce. intros _ Hn0. rewrite Hn0 in Hlevel1. assumption.
-    Qed.
+    Qed.*)
 End CryptographicInvariants.
 
 Import BabelLightDefs.
@@ -269,6 +329,73 @@ Include CryptographicInvariants BabelLightDefs BabelLightInvariants.
 Import BabelLightInvariants.
 
 Theorem ChallengeRequestCorrespondence: forall a b n0 msg L,
+    GoodLog L -> RequestAB a b n0 msg L ->
+    forall l t, l = Low -> t = Pair (Literal (String TagChallengeRequest EmptyString)) (Pair n0 msg) ->
+    Level l t L -> LoggedP (Request a b n0 msg) L \/ (LoggedP (Bad a) L \/ LoggedP (Bad b) L).
+Proof.
+    intros a b n0 msg L. unfold RequestAB. intros HGoodLog Hrequest. intros l t. intros Hlow Hterm Hlevel.
+    assert ( HGoodLog_bis : GoodLog L ). assumption.
+    unfold GoodLog in HGoodLog. destruct HGoodLog as (HGL_WfLog & HGL_LogInv).
+    unfold WF_Log in HGL_WfLog. unfold LogInvariant in HGL_LogInv.
+    induction Hlevel ; try discriminate. injection Hterm. intros Ht2 Ht1.
+    assert ( Hrequest_bis : Logged (New n0 (Nonce (ChallengeRequest a b msg))) L ). assumption.
+    specialize HGL_LogInv with (t:=n0) (u:=Nonce (ChallengeRequest a b msg)). apply HGL_LogInv in Hrequest_bis.
+    destruct Hrequest_bis as (bs, HLitn0). assert ( HnonceComp : nonceComp (Literal bs) L ).
+    - apply LowNonce_Inversion with (t:=Literal bs) (l:=Low) (nu:=ChallengeRequest a b msg) ; try easy.
+        + rewrite HLitn0 in Hrequest. assumption.
+        + rewrite Ht2 in Hlevel2. rewrite Hlow in Hlevel2.
+            assert ( Hpair : Level Low (Literal bs) L /\ Level Low msg L ).
+            *  apply LowPair_Inversion with (t1:=Literal bs) (t2:=msg) (l:= Low) (t:=Pair (Literal bs) msg) ; try easy.
+                rewrite HLitn0 in Hlevel2. assumption.
+            * destruct Hpair as (Hpair & _). assumption.
+    - unfold nonceComp in HnonceComp. destruct HnonceComp as (a0, HnonceComp_a).
+        destruct HnonceComp_a as (b0, HnonceComp_ab). destruct HnonceComp_ab as (msg0, HnonceComp_abmsg).
+        destruct HnonceComp_abmsg as [HNC_request | HNC_response].
+        + destruct HNC_request as (HNC_request_req & HNC_request_reqComp).
+            unfold RequestN in HNC_request_req. unfold RequestNComp in HNC_request_reqComp.
+            rewrite HLitn0 in Hrequest. 
+            specialize HGL_WfLog with (t:=Literal bs) (u:=Nonce (ChallengeRequest a b msg)) (u':=Nonce (ChallengeRequest a0 b0 msg0)).
+            apply HGL_WfLog in Hrequest ; try assumption. injection Hrequest. intros _ Hb Ha. 
+            rewrite <- Ha in HNC_request_reqComp. rewrite <- Hb in HNC_request_reqComp.
+            right. assumption.
+        + destruct HNC_response as (HNC_response_resp & _). unfold ResponseN in HNC_response_resp.
+            rewrite HLitn0 in Hrequest. 
+            specialize HGL_WfLog with (t:=Literal bs) (u:=Nonce (ChallengeRequest a b msg)) (u':=Nonce (ChallengeReply a0 b0 msg0)).
+            apply HGL_WfLog in Hrequest ; try assumption. discriminate.
+Qed.
+
+Theorem ChallengeReplyCorrespondence: forall a b n0 msg L,
+    GoodLog L -> ResponseAB a b n0 msg L ->
+    forall l t, l = Low -> t = Pair (Literal (String TagChallengeReply EmptyString)) n0 ->
+    Level l t L -> LoggedP (Reply a b n0 msg) L \/ (LoggedP (Bad a) L \/ LoggedP (Bad b) L).
+Proof.
+    intros a b n0 msg L. unfold ResponseAB. intros HGoodLog Hresponse. intros l t. intros Hlow Hterm Hlevel.
+    assert ( HGoodLog_bis : GoodLog L ). assumption.
+    unfold GoodLog in HGoodLog. destruct HGoodLog as (HGL_WfLog & HGL_LogInv).
+    unfold WF_Log in HGL_WfLog. unfold LogInvariant in HGL_LogInv.
+    induction Hlevel ; try discriminate. injection Hterm. intros Ht2 Ht1.
+    assert ( Hresponse_bis : Logged (New n0 (Nonce (ChallengeReply a b msg))) L ). assumption.
+    specialize HGL_LogInv with (t:=n0) (u:=Nonce (ChallengeReply a b msg)). apply HGL_LogInv in Hresponse_bis.
+    destruct Hresponse_bis as (bs, HLitn0). assert ( HnonceComp : nonceComp (Literal bs) L ).
+    - apply LowNonce_Inversion with (t:=Literal bs) (l:=Low) (nu:=ChallengeReply a b msg) ; try easy.
+        + rewrite HLitn0 in Hresponse. assumption.
+        + rewrite Hlow in Hlevel2. rewrite Ht2 in Hlevel2. rewrite HLitn0 in Hlevel2. assumption.
+    - unfold nonceComp in HnonceComp. destruct HnonceComp as (a0, HnonceComp_a). 
+        destruct HnonceComp_a as (b0, HnonceComp_ab). destruct HnonceComp_ab as (msg0, HnonceComp_abmsg).
+        destruct HnonceComp_abmsg as [HNC_request | HNC_response].
+        + destruct HNC_request as (HNC_request_req & _). unfold RequestN in HNC_request_req.
+            rewrite HLitn0 in Hresponse. 
+            specialize HGL_WfLog with (t:=Literal bs) (u:=Nonce (ChallengeReply a b msg)) (u':=Nonce (ChallengeRequest a0 b0 msg0)).
+            apply HGL_WfLog in Hresponse ; try assumption. discriminate.
+        + destruct HNC_response as (HNC_response_resp & HNC_response_respComp). 
+            unfold ResponseN in HNC_response_resp. unfold ResponseNComp in HNC_response_respComp. rewrite HLitn0 in Hresponse.
+            specialize HGL_WfLog with (t:=Literal bs) (u:=Nonce (ChallengeReply a b msg)) (u':=Nonce (ChallengeReply a0 b0 msg0)).
+            apply HGL_WfLog in Hresponse ; try assumption. injection Hresponse. intros _ Hb Ha.
+            rewrite <- Ha in HNC_response_respComp. rewrite <- Hb in HNC_response_respComp.
+            right. assumption.
+Qed.
+
+(*Theorem ChallengeRequestCorrespondence: forall a b n0 msg L,
     GoodLog L -> ExchangeAB a b n0 msg L ->
     forall l t, l = Low -> t = Nonce n0 (Pair (Literal (String TagChallengeRequest EmptyString)) (Pair n0 msg)) ->
     Level l t L -> LoggedP (ChallengeRequest a b n0 msg) L \/ LoggedP (Bad a) L.
@@ -370,4 +497,4 @@ Proof.
         unfold ExchangeAB in Hlow_exchAB. specialize HGL_WfLog with (t:=Literal bs0) (u:=Nonce_U (Challenge a b msg)) (u':=Nonce_U (Challenge a' b' msg')).
         apply HGL_WfLog in HExchangeAB ; try assumption. injection HExchangeAB. intros Hmsg Hb Ha.
         unfold ExchangeABComp in Hlow_exchABComp. rewrite Ha. assumption.
-Qed.
+Qed.*)
