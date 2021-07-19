@@ -86,7 +86,6 @@ Module ERPCDefs <: ProtocolDefs.
     Definition nonce_usage := nonce_usage'.
 
     Inductive senc_usage' :=
-        (*| U_SKeyAB (a b req: term)*)
         | U_KeyAB (a b: term).
     Definition senc_usage := senc_usage'.
 

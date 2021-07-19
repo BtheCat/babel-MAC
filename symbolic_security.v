@@ -431,30 +431,6 @@ Module ERPCInvariants <: ProtocolInvariants ERPCDefs.
         - right. destruct HcanSEncL_key as (a, HcanSEncL_key_a). destruct HcanSEncL_key_a as (b, HcanSEncL_key_ab).
             exists a. exists b. firstorder.
     Qed.
-
-    (*Definition encComp k L := 
-        exists a, exists b, KeyAB a b k L /\ KeyABComp a b L.
-    
-    Theorem encComp_Stable: 
-        forall t, Stable (encComp t).
-    Proof.
-        intro t. unfold Stable. intros L L'.
-        unfold leq_log. unfold encComp. unfold KeyAB. unfold KeyABComp. unfold LoggedP.
-        firstorder.
-    Qed.
-
-    Definition canEnc k p L := 
-        exists a, exists b, KeyAB a b k L /\ KeyABPayload a b p L.
-
-    Theorem canEnc_Stable: 
-        forall k p, Stable (canEnc k p).
-    Proof.
-        intros k p. unfold Stable. intros L L'.
-        unfold leq_log. unfold canEnc. unfold KeyABPayload. unfold LoggedP.
-        intros Hleq_log HcanHmacL.
-        destruct HcanHmacL as (a, HcanHmacL_a). destruct HcanHmacL_a as (b, HcanHmacL_ab).
-        exists a. exists b. firstorder.
-    Qed.*)
     
     Definition sigComp (_: term) (_: log) := False.
     Definition canSign (_ _: term) (_: log) := False.
