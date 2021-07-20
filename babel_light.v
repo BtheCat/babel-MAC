@@ -27,10 +27,12 @@
         b -> a  : Literal([TagMsg]) | msg
         a       : assert(Msg(a, b, msg))
         a       : Log(ChallengeRequest(a, b, n0, msg))
-        a -> b  : Literal([TagChallengeRequest]) | msg | hmac(k, n0)
+        a -> b  : Literal([TagChallengeRequest]) | msg | n0 
+                        | hmac(k, Literal([TagChallengeRequest]) | msg | n0)
         b       : assert(ChallengeRequest(a, b, n0, msg))
         b       : Log(ChallengeReply(a, b, n0))
-        b -> a  : Literal([TagChallengeReply]) | hmac(k, n0)
+        b -> a  : Literal([TagChallengeReply]) | n0 
+                        | hmac(k, Literal([TagChallengeReply]) | n0)
         a       : assert(ChallengeReply(a, b, msg, n0))
 *)
 
@@ -43,8 +45,6 @@ Inductive term: Type :=
     | Pair (a: term) (b: term)
     | HMac (k: term) (p: term).
 
-(* Signature: Protocol Usages and Events *)
-
 Module Type ProtocolDefs.
     Parameter nonce_usage: Type.
     Parameter hmac_usage: Type.
@@ -52,12 +52,12 @@ Module Type ProtocolDefs.
 End ProtocolDefs.
 
 Module BabelLightDefs <: ProtocolDefs.
-    Parameter TagMsg: ascii.
+    (*Parameter TagMsg: ascii.*)
     Parameter TagChallengeRequest: ascii.
     Parameter TagChallengeReply: ascii.
     Parameter TagsDistinct: (TagChallengeRequest <> TagChallengeReply) 
-                            /\ (TagChallengeRequest <> TagMsg)
-                            /\ (TagChallengeReply <> TagMsg).
+                            (*/\ (TagChallengeRequest <> TagMsg)
+                            /\ (TagChallengeReply <> TagMsg)*).
 
     Inductive nonce_usage' :=
         | ChallengeRequest (a b msg: term)
@@ -65,7 +65,7 @@ Module BabelLightDefs <: ProtocolDefs.
     Definition nonce_usage := nonce_usage'.
 
     Inductive hmac_usage' :=
-        | HNonce (n: term).
+        | U_KeyAB (a b: term).
     Definition hmac_usage := hmac_usage'.
     
     Inductive pEvent' :=
@@ -88,17 +88,14 @@ Module Defs (PD : ProtocolDefs).
         | New (t: term) (u: usage)
         | ProtEvent (pe: pEvent).
 
-    (* Definition of logs, here as simple sets of events. Also, some definitions of membership and inclusion order. *)
     Definition log: Type := set event.
     Definition Logged (e: event) (L: log): Prop := set_In e L.
     Definition LoggedP (e: pEvent) (L: log): Prop := Logged (ProtEvent e) L.
     Definition leq_log (L L': log): Prop := forall e, Logged e L -> Logged e L'.
 
-    (* Notion of stability of log-dependant predicates under addition of events to the log *)
     Definition Stable (P: log -> Prop) := forall L L', 
         leq_log L L' -> P L -> 
         P L'.
-    (* General well-formedness condition stating that any given term can have at most one usage. *)
     Definition WF_Log (L: log): Prop :=
         (forall t u u',
             Logged (New t u) L ->
@@ -124,43 +121,50 @@ Module BabelLightInvariants <: ProtocolInvariants BabelLightDefs.
 
     Definition LogInvariant L :=
         forall t u, Logged (New t u) L -> (exists bs, t = Literal bs).
-    
-    Definition RequestN a b k msg L :=
-        exists n, Logged (New k (HMacKey (HNonce n))) L /\ Logged (New n (Nonce (ChallengeRequest a b msg))) L.
-    
-    Definition ResponseN a b k msg L := 
-        exists n, Logged (New k (HMacKey (HNonce n))) L /\ Logged (New n (Nonce (ChallengeReply a b msg))) L.
 
-    Definition keyComp a b L :=
+    Definition KeyAB a b k L :=
+        Logged (New k (HMacKey (U_KeyAB a b))) L.
+    
+    (*Definition RequestN a b n L :=
+        exists msg, Logged (New n (Nonce (ChallengeRequest a b msg))) L.*)
+    
+    Definition ResponseN a b n msg L := 
+        Logged (New n (Nonce (ChallengeReply a b msg))) L.
+
+    Definition KeyABComp a b L :=
         LoggedP (Bad a) L \/ LoggedP (Bad b) L.
 
     Definition hmacComp k L :=
-        exists a, exists b, exists msg, (RequestN a b k msg L \/ ResponseN a b k msg L) /\ keyComp a b L.
+        exists a, exists b, KeyAB a b k L /\ KeyABComp a b L.
 
     Theorem hmacComp_Stable:
         forall t, Stable (hmacComp t).
-    Admitted.
+    Proof.
+        intro t. unfold Stable. intros L L'.
+        unfold leq_log. unfold hmacComp. unfold KeyAB. unfold KeyABComp. unfold LoggedP.
+        firstorder.
+    Qed.
 
-    Definition noncePayload a b n L :=
-        (exists msg, exists p, exists k, 
-            p = Pair (Literal (String TagChallengeRequest EmptyString)) (Pair msg (HMac k n)) /\
+    Definition KeyABPayload a b p L :=
+        (exists n, exists msg, 
+            p = Pair (Literal (String TagChallengeRequest EmptyString)) (Pair msg n) /\
             LoggedP (Request a b n msg) L) \/
-        (exists p, exists msg, exists k,
-            p = Pair (Literal (String TagChallengeReply EmptyString)) (HMac k n) /\
+        (exists n, exists msg,
+            p = Pair (Literal (String TagChallengeReply EmptyString)) n /\
             LoggedP (Reply a b n msg) L).
 
-    Definition canHmac k n L :=
-        exists a, exists b, exists msg, (RequestN a b k msg L \/ ResponseN a b k msg L) /\ noncePayload a b n L.
+    Definition canHmac k p L :=
+        exists a, exists b, KeyAB a b k L /\ KeyABPayload a b p L.
 
     Theorem canHmac_Stable:
         forall k n, Stable (canHmac k n).
     Proof.
-        intros k n. unfold Stable. intros L L'. unfold leq_log. unfold canHmac.
-        unfold RequestN. unfold ResponseN. unfold noncePayload. unfold LoggedP.
-        intros Hleq_log HcanHmacL. destruct HcanHmacL as (a, HcanHmacL_a).
-        destruct HcanHmacL_a as (b, HcanHmacL_ab). destruct HcanHmacL_ab as (msg, HcanHmacL_abmsg).
-        exists a. exists b. exists msg. 
-    Admitted.
+        intros k p. unfold Stable. intros L L'. unfold leq_log. unfold canHmac.
+        unfold KeyAB. unfold KeyABPayload. unfold LoggedP.
+        intros Hleq_log HcanHmacL. 
+        destruct HcanHmacL as (a, HcanHmacL_a). destruct HcanHmacL_a as (b, HcanHmacL_ab).
+        exists a. exists b. firstorder.
+    Qed.
 End BabelLightInvariants.
 
 Module CryptographicInvariants (PD: ProtocolDefs) (PI: ProtocolInvariants PD).
@@ -174,16 +178,25 @@ Module CryptographicInvariants (PD: ProtocolDefs) (PI: ProtocolInvariants PD).
         | Level_AdversaryGuess: forall l bs L,
             Logged (New (Literal bs) AdversaryGuess) L ->
             Level l (Literal bs) L
+        
+        | Level_HMacKey: forall l bs L hu,
+            Logged (New (Literal bs) (HMacKey hu)) L ->
+            (l = Low -> hmacComp (Literal bs) L) ->
+            Level l (Literal bs) L 
 
         | Level_Pair: forall l t1 t2 L,
             Level l t1 L ->
             Level l t2 L ->
             Level l (Pair t1 t2) L
             
-        | Level_HMac: forall l k n L,
-            canHmac k n L ->
+        | Level_HMac: forall l k m L,
+            canHmac k m L ->
             Level l m L ->
-            Level l (HMac k n).
+            Level l (HMac k m) L
+        | Level_HMac_Low: forall l k m L,
+            Level Low k L ->
+            Level Low m L ->
+            Level l (HMac k m) L.
     
     Theorem Low_High: forall t L,
         Level Low t L -> Level High t L.
@@ -191,8 +204,10 @@ Module CryptographicInvariants (PD: ProtocolDefs) (PI: ProtocolInvariants PD).
         intros t L. intro Hlow.
         induction Hlow.
         - apply Level_AdversaryGuess. assumption.
-        - apply Level_Nonce with (nu:=nu) ; try assumption. easy.
+        - apply Level_HMacKey with (hu:=hu) ; try assumption. easy.
         - apply Level_Pair ; assumption.
+        - apply Level_HMac ; assumption.
+        - apply Level_HMac_Low ; assumption.
     Qed.
 
     Theorem Level_Stable: forall l t L L',
@@ -203,12 +218,15 @@ Module CryptographicInvariants (PD: ProtocolDefs) (PI: ProtocolInvariants PD).
         induction HlevelL.
         - apply Level_AdversaryGuess. unfold leq_log in Hleq_log.
             specialize Hleq_log with (e:=(New (Literal bs) AdversaryGuess)). auto.
-        - apply Level_Nonce with (nu:=nu). 
+        - apply Level_HMacKey with (hu:=hu).
             * unfold leq_log in Hleq_log.
-                specialize Hleq_log with (e:=(New (Literal bs) (Nonce nu))). auto.
-            * intro Hllow. apply H0 in Hllow. 
-                assert ( Hstable : Stable (nonceComp (Literal bs)) ). apply nonceComp_Stable. firstorder.
+                specialize Hleq_log with (e:=(New (Literal bs) (HMacKey hu))). auto.
+            * intro Hllow. apply H0 in Hllow.
+                assert ( Hstable : Stable (hmacComp (Literal bs)) ). apply hmacComp_Stable. firstorder.
         - apply Level_Pair ; firstorder.
+        - apply Level_HMac ; try auto.
+            assert ( Hstable : Stable (canHmac k m) ). apply canHmac_Stable. firstorder.
+        - apply Level_HMac_Low ; firstorder.
     Qed.
 
     Theorem AbsurdDistinctUsages : forall P L t u u',
@@ -225,8 +243,108 @@ Module CryptographicInvariants (PD: ProtocolDefs) (PI: ProtocolInvariants PD).
         apply HGL_WfLog in HlogU ; try assumption.
         exfalso. tauto.
     Qed.
+
+    Theorem LowHmacKeyLiteral_Inversion : forall L k hu,
+        GoodLog L ->
+        Logged (New (Literal k) (HMacKey hu)) L ->
+        forall l t, l = Low -> t = Literal k -> Level l t L ->
+        hmacComp (Literal k) L.
+    Proof. 
+        intros L k hu. intros HGoodLog Hlog. intros l t. intros Hlow HLit Hlevel. symmetry in HLit.
+        unfold GoodLog in HGoodLog. destruct HGoodLog as (HGL_WL_Usage & _).
+        unfold WF_Log in HGL_WL_Usage.
+        induction Hlevel ; try discriminate.
+        - exfalso. specialize HGL_WL_Usage with (t:=Literal bs) (u:=HMacKey hu) (u':=AdversaryGuess).
+            rewrite HLit in Hlog. apply HGL_WL_Usage in Hlog ; try assumption. discriminate.
+        - apply H0 in Hlow. rewrite HLit. assumption.
+    Qed.
+
+    Theorem HMac_Inversion : forall L l k p,
+        forall t, t = HMac k p -> Level l t L ->
+        canHmac k p L \/ Level Low k L.
+    Proof.
+        intros L l k p. intro t. intros Hhmac Hlevel.
+        induction Hlevel ; try discriminate.
+        - injection Hhmac. intros Hm Hk0. rewrite Hm in H. rewrite Hk0 in H. auto.
+        - injection Hhmac. intros _ Hk0. rewrite Hk0 in Hlevel1. auto.
+    Qed.
 End CryptographicInvariants.
 
 Import BabelLightDefs.
 Include CryptographicInvariants BabelLightDefs BabelLightInvariants.
 Import BabelLightInvariants.
+
+Theorem RequestCorrespondence: forall a b k n msg L,
+    GoodLog L -> KeyAB a b k L ->
+    forall l t, l = Low -> t = (HMac k (Pair (Literal (String TagChallengeRequest EmptyString)) (Pair msg n))) ->
+    Level l t L ->
+    LoggedP (Request a b n msg) L \/
+    LoggedP (Bad a) L \/ LoggedP (Bad b) L.
+Proof.
+    intros a b k n msg L. unfold KeyAB.
+    intros HGoodLog HKeyAB. intros l t. intros Hlow Hhmac Hlevel.
+    assert ( HGoodLog_bis : GoodLog L ). assumption.
+    unfold GoodLog in HGoodLog. destruct HGoodLog as (HGL_WL_Usage & HGL_LogInv).
+    unfold WF_Log in HGL_WL_Usage.
+    unfold LogInvariant in HGL_LogInv. induction Hlevel ; try discriminate.
+    - left. injection Hhmac. intros Hm Hk0. rewrite Hk0 in H. unfold canHmac in H.
+        destruct H as (a0, Ha). destruct Ha as (b0, Hab).
+        destruct Hab as (Hkey & HkeyPayload).
+        unfold KeyAB in Hkey. specialize HGL_WL_Usage with (t:=k) (u:=HMacKey (U_KeyAB a b)) (u':=HMacKey (U_KeyAB a0 b0)).
+        apply HGL_WL_Usage in HKeyAB ; try assumption. injection HKeyAB. intros Hb Ha.
+        unfold KeyABPayload in HkeyPayload. destruct HkeyPayload as [HKP_req | HKP_reply].
+        + destruct HKP_req as (n0, HKP_req_n). destruct HKP_req_n as (msg0, HKP_req_nmsg).
+            destruct HKP_req_nmsg as (HKP_req_m & HKP_req_log).
+            symmetry in Hm. rewrite HKP_req_m in Hm. injection Hm. intros Hn Hmsg.
+            rewrite <- Ha in HKP_req_log. rewrite <- Hb in HKP_req_log. 
+            rewrite <- Hn in HKP_req_log. rewrite <- Hmsg in HKP_req_log. assumption.
+        + exfalso. destruct HKP_reply as (n0, HKP_reply_n). destruct HKP_reply_n as (msg0, HKP_reply_nmsg).
+            destruct HKP_reply_nmsg as (HKP_reply & _). symmetry in Hm.
+            rewrite HKP_reply in Hm. injection Hm. intros _ Htag.
+            assert ( HTagDistinct : TagChallengeRequest <> TagChallengeReply ). 
+            apply TagsDistinct. tauto.
+    - right. injection Hhmac. intros Hm Hk0. rewrite Hk0 in Hlevel1.
+        specialize HGL_LogInv with (t:=k) (u:=HMacKey (U_KeyAB a b)).
+        assert ( Hlog : Logged (New k (HMacKey (U_KeyAB a b))) L ). assumption.
+        apply HGL_LogInv in HKeyAB. destruct HKeyAB as (bs, HLitk).
+        assert ( HhmacComp : hmacComp (Literal bs) L ).
+        + apply LowHmacKeyLiteral_Inversion with (hu:=U_KeyAB a b) (l:=Low) (t:=Literal bs) ; try easy.
+            * rewrite HLitk in Hlog. assumption.
+            * rewrite HLitk in Hlevel1. assumption.
+        + unfold hmacComp in HhmacComp. destruct HhmacComp as (a0, HhmacComp_a).
+            destruct HhmacComp_a as (b0, HhmacComp_ab).
+            destruct HhmacComp_ab as (HHC_key & HHC_keyComp).
+            unfold KeyAB in HHC_key. rewrite HLitk in Hlog. 
+            specialize HGL_WL_Usage with (t:=Literal bs) (u:=HMacKey (U_KeyAB a b)) (u':=HMacKey (U_KeyAB a0 b0)).
+            apply HGL_WL_Usage in Hlog ; try assumption. injection Hlog. intros Hb Ha.
+            rewrite <- Ha in HHC_keyComp. rewrite <- Hb in HHC_keyComp. 
+            unfold KeyABComp in HHC_keyComp. assumption.
+Qed.
+
+Theorem ResponseCorrespondence: forall a b k n msg L,
+    GoodLog L -> KeyAB a b k L -> ResponseN a b n msg L ->
+    forall l t, l = Low -> t = (HMac k (Pair (Literal (String TagChallengeReply EmptyString)) n)) ->
+    Level l t L ->
+    LoggedP (Reply a b n msg) L \/
+    LoggedP (Bad a) L \/ LoggedP (Bad b) L.
+Proof.
+    intros a b k n msg L. unfold KeyAB. unfold ResponseN.
+    intros HGoodLog HKeyAB HrespN. intros l t. intros Hlow Hhmac Hlevel.
+    assert ( HGoodLog_bis : GoodLog L ). assumption.
+    unfold GoodLog in HGoodLog. destruct HGoodLog as (HGL_WL_Usage & HGL_LogInv).
+    unfold WF_Log in HGL_WL_Usage. unfold LogInvariant in HGL_LogInv.
+    induction Hlevel ; try discriminate.
+    - left. injection Hhmac. intros Hm Hk0. rewrite Hk0 in H. unfold canHmac in H.
+        destruct H as (a0, Ha). destruct Ha as (b0, Hab).
+        destruct Hab as (Hkey & HkeyPayload). unfold KeyAB in Hkey.
+        specialize HGL_WL_Usage with (t:=k) (u:=HMacKey (U_KeyAB a b)) (u':=HMacKey (U_KeyAB a0 b0)).
+        apply HGL_WL_Usage in HKeyAB ; try assumption. injection HKeyAB. intros Hb Ha.
+        unfold KeyABPayload in HkeyPayload. destruct HkeyPayload as [HKP_req | HKP_reply].
+        + exfalso. destruct HKP_req as (n0, HKP_req_n). destruct HKP_req_n as (msg0, HKP_req_nmsg).
+            destruct HKP_req_nmsg as (HKP_req_m & _). symmetry in Hm. rewrite HKP_req_m in Hm.
+            injection Hm. intros _ Htag.
+            assert ( HtagDistinct : TagChallengeRequest <> TagChallengeReply ). apply TagsDistinct.
+            firstorder.
+        + destruct HKP_reply as (n0, HKP_reply_n). destruct HKP_reply_n as (msg0, HKP_reply_nmsg).
+            destruct HKP_reply_nmsg as (HKP_reply_m & HKP_reply_log).
+            symmetry in Hm. rewrite HKP_reply_m in Hm. injection Hm. intro Hn.

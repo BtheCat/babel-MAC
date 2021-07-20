@@ -33,14 +33,13 @@ Module Type ProtocolDefs.
     Parameter pEvent: Type.
 End ProtocolDefs.
 
-(*
-    Protocol Example: an Authenticated RPC Protocol
-        a       : Log(Request(a, b, req))
-        a -> b  : req | hmac(kab, Literal([TagRequest]) | req)
-        b       : assert(Request(a, b, req))
-        b       : Log(Response(a, b, req, resp))
-        b -> a  : resp | hmac(kab, Literal([TagResponse]) | req | resp)
-        a       : assert(Response(a, b, req, resp))
+(* Protocol Example: an Authenticated RPC Protocol
+    a       : Log(Request(a, b, req))
+    a -> b  : req | hmac(kab, Literal([TagRequest]) | req)
+    b       : assert(Request(a, b, req))
+    b       : Log(Response(a, b, req, resp))
+    b -> a  : resp | hmac(kab, Literal([TagResponse]) | req | resp)
+    a       : assert(Response(a, b, req, resp))
 *)
 
 Module RPCDefs <: ProtocolDefs.
@@ -64,15 +63,14 @@ Module RPCDefs <: ProtocolDefs.
     Definition pEvent := pEvent'.
 End RPCDefs.
 
-(*
-    Protocol Example: Encrypted RPC Protocol
-        a       : Log(Request(a, b, req))
-        a       : k = keygen()
-        a -> b  : senc(kab, req | k)
-        b       : assert(Request(a, b, req))
-        b       : Log(Response(a, b, req, resp))
-        b -> a  : senc(k, resp)
-        a       : assert(Response(a, b, req, resp))
+(* Protocol Example: Encrypted RPC Protocol
+    a       : Log(Request(a, b, req))
+    a       : k = keygen()
+    a -> b  : senc(kab, req | k)
+    b       : assert(Request(a, b, req))
+    b       : Log(Response(a, b, req, resp))
+    b -> a  : senc(k, resp)
+    a       : assert(Response(a, b, req, resp))
 *)
 
 Module ERPCDefs <: ProtocolDefs.
@@ -101,19 +99,18 @@ Module ERPCDefs <: ProtocolDefs.
     Definition pEvent := pEvent'.
 End ERPCDefs.
 
-(* 
-    Protocol Example: Otway-Rees Protocol 
-        i       : ni = fresh()
-        i -> r  : i | ni
-        r       : nr = fresh()
-        r -> s  : i | r | ni | nr
-        s       : kir = keygen()
-        s       : Log(Initiator(i, ni, kir, r))
-        s       : Log(Responder(r, nr, kir, i))
-        s -> r  : senc(ki, i | r | kir | ni) | senc(kr, i | r | kir | nr)
-        r       : Log(Responder(i, nr, kir, r))
-        r -> i  : senc(ki, i | r | kir | ni)
-        i       : assert(Initiator(i, ni, kir, r))
+(* Protocol Example: Otway-Rees Protocol 
+    i       : ni = fresh()
+    i -> r  : i | ni
+    r       : nr = fresh()
+    r -> s  : i | r | ni | nr
+    s       : kir = keygen()
+    s       : Log(Initiator(i, ni, kir, r))
+    s       : Log(Responder(r, nr, kir, i))
+    s -> r  : senc(ki, i | r | kir | ni) | senc(kr, i | r | kir | nr)
+    r       : Log(Responder(i, nr, kir, r))
+    r -> i  : senc(ki, i | r | kir | ni)
+    i       : assert(Initiator(i, ni, kir, r))
 *)
 
 Module OtwayReesDefs <: ProtocolDefs.

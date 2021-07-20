@@ -29,23 +29,23 @@ Definition RecvMsg (a b: hostname) (pc_b index_b: nat) (msg: bytes): asn :=
     
 
 Inductive Sig: Type -> Type :=
-    (* Assertions *)
-    | Assume: asn -> Sig unit 
-    | Assert: asn -> Sig unit 
-    (* Cryptographic operations *)
-    | MAC: forall A, key -> A -> Sig bytes 
-    | Verify: forall A, key -> A -> bytes -> Sig unit 
-    | Fresh_key: hostname -> hostname -> Sig key 
-    (* Protocol operations *)
-    | Fresh_nonce: hostname -> Sig nat
-    | Verify_nonce: nonce -> nonce -> Sig unit 
-    | Incr_PC: hostname -> Sig nat 
-    | Modify_PC_index: hostname -> set nat -> hostname -> (nat * nat)%type -> Sig unit
-    | Fresh_index: hostname -> Sig nat 
-    | Verify_PC_index: hostname -> (nat * nat)%type -> set nat -> Sig bool
-    (* Network I/O *)
-    | Send: forall A, hostname -> A -> Sig unit 
-    | Receive: forall A, Sig A.
+(* Assertions *)
+| Assume: asn -> Sig unit 
+| Assert: asn -> Sig unit 
+(* Cryptographic operations *)
+| MAC: forall A, key -> A -> Sig bytes 
+| Verify: forall A, key -> A -> bytes -> Sig unit 
+| Fresh_key: hostname -> hostname -> Sig key 
+(* Protocol operations *)
+| Fresh_nonce: hostname -> Sig nat
+| Verify_nonce: nonce -> nonce -> Sig unit 
+| Incr_PC: hostname -> Sig nat 
+| Modify_PC_index: hostname -> set nat -> hostname -> (nat * nat)%type -> Sig unit
+| Fresh_index: hostname -> Sig nat 
+| Verify_PC_index: hostname -> (nat * nat)%type -> set nat -> Sig bool
+(* Network I/O *)
+| Send: forall A, hostname -> A -> Sig unit 
+| Receive: forall A, Sig A.
 
 Arguments MAC [_] k a.
 Arguments Verify [_] k a b.
