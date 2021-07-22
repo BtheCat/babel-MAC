@@ -1,6 +1,7 @@
 Require Import ListSet.
 Require Import String.
 Require Import List.
+Require Import Bool.
 
 Parameter key: Type.
 
@@ -14,6 +15,13 @@ Parameter key: Type.
 Inductive agent := 
     | Friend : nat -> agent 
     | Spy : agent.
+
+Definition eq_agent (A B: agent): bool :=
+    match A, B with 
+        | Friend i, Friend j => Nat.eqb i j
+        | Spy, Spy => true 
+        | _, _ => false 
+    end.
 
 Parameter shrK : agent -> agent -> key.
 
@@ -85,16 +93,43 @@ Fixpoint used (evs: list event) (m: msg): Prop :=
         | (Notes A p)::evs' => (parts p (fun m' => m' = m)) \/ used evs' m 
     end.
 
-Parameter get_PC: list event -> agent -> agent -> nat.
-Parameter get_index: list event -> agent -> agent -> string.
-Parameter fresh_msg: list event -> agent -> msg -> Prop.
+Definition gt_nat_option (no mo: option nat): Prop :=
+    match no, mo with 
+        | Some n, Some m => n > m 
+        | _, _ => False 
+    end. 
+
+Fixpoint fresh_msg (evs: list event) (A: agent) (m: msg): Prop :=
+    match evs with 
+        | nil => False 
+        | (Says X Y p)::evs' => ( (X = A /\ parts p (fun m' => m' = m)) 
+                                    \/ (Y = A /\ parts p (fun m' => m' = m) ) )
+                                \/ fresh_msg evs' A m
+        | (Notes X p)::evs' => ( X = A /\ parts p (fun m' => m' = m) ) \/ fresh_msg evs' A m
+    end. 
+
+Fixpoint get_index (evs: list event) (A B: agent): option string :=
+    match evs with
+        | nil => None
+        | (Notes X (Index Y index_Y))::evs' => 
+                if (eq_agent X A) && (eq_agent Y B) then Some index_Y else get_index evs' A B 
+        | _::evs' => get_index evs' A B
+    end.
+
+Fixpoint get_PC (evs: list event) (A B: agent): option nat :=
+    match evs with 
+        | nil => None
+        | (Notes X (PC Y PC_Y))::evs' =>
+                if (eq_agent X A) && (eq_agent Y B) then Some PC_Y else get_PC evs' A B 
+        | _::evs' => get_PC evs' A B 
+    end. 
 
 Inductive Logged: list event -> Prop :=
     | Logged_init: forall (X: agent), 
         Logged (cons (Notes X (PC X 0)) (cons (Notes X (Index X "init")) nil))
 
     | Logged_init_msg: forall evs A B index_B PC_B kab messg,
-        Logged evs -> kab = shrK A B -> PC_B = get_PC evs B B -> index_B = get_index evs B B ->
+        Logged evs -> kab = shrK A B -> Some PC_B = get_PC evs B B -> Some index_B = get_index evs B B ->
         let messg_msg := Msg messg (Index B index_B) (PC B PC_B) in
         Logged ( cons (Says B A (Pair messg_msg (Hash kab messg_msg)))
                     ( cons (Notes B (PC B (PC_B + 1))) evs ))
@@ -102,7 +137,7 @@ Inductive Logged: list event -> Prop :=
     | Logged_accept_msg: forall evs A B index_B PC_B kab messg resp,
         let messg_msg := Msg messg (Index B index_B) (PC B PC_B) in
         Logged evs -> In (Says B A (Pair messg_msg (Hash kab messg_msg))) evs ->
-            index_B = get_index evs A B -> PC_B > get_PC evs A B ->
+            Some index_B = get_index evs A B -> gt_nat_option (Some PC_B) (get_PC evs A B) ->
         let resp_msg := Resp messg resp (Index B index_B) (PC B PC_B) in
         Logged ( cons (Notes A (PC B PC_B)) ( cons (Says A B (Pair resp_msg (Hash kab resp_msg))) evs ) )
         
