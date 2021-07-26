@@ -114,12 +114,12 @@ Definition fresh_index B evs index := not ( analz (knows B evs) (Atom (inr (Inde
 Definition fresh_nonce A evs n0 := not ( analz (knows A evs) (Atom (inr (Nonce n0))) ).
 
 Parameters A B: agent.
-Definition evs := [ publicly_ChallengeRequest A B 42].
+Definition evs_ex := [ publicly_ChallengeRequest A B 42].
 Lemma f:
-    fresh_nonce A evs 42 -> False.
+    fresh_nonce A evs_ex 42 -> False.
 Proof.
     unfold fresh_nonce. intro H. apply H.
-    unfold evs. unfold publicly_ChallengeRequest.
+    unfold evs_ex. unfold publicly_ChallengeRequest.
     unfold format_ChallengeRequest. 
     apply analz_tuple with (Xs := [Atom (inl TagChallengeRequest) ; Atom (inr (Nonce 42))]) ; try firstorder.
     apply analz_tuple with (Xs := [Tuple [Atom (inl TagChallengeRequest) ; Atom (inr (Nonce 42)) ] ; 
@@ -143,6 +143,7 @@ Proof.
 Qed.
 
 Inductive saved (A: agent) (P Q: msg -> Prop): capture -> Prop :=
+    | saved_init m: init_state A m -> Q m -> saved A P Q []
     | saved_now m evs: P m -> Q m -> saved A P Q ( (privately A m) :: evs )
     | saved_later A' m evs: (A = A' -> not (P m)) -> saved A P Q evs -> saved A P Q ( (privately A' m) :: evs )
     | saved_skip A' B m evs: saved A P Q evs -> saved A P Q ( (publicly A' B m) :: evs ).
@@ -207,15 +208,62 @@ Inductive Network: list event -> Prop :=
 
 
 Lemma not_synth_mac:
-    forall H X, synth H (MAC X) -> False.
+    forall H X t, t = MAC X -> synth H t -> False.
 Proof.
+    intros H X t. intros Hmac Hsynth.
+    induction Hsynth ; try discriminate.
+    - admit.
+    - injection  Hmac. intro HX0.  
 Admitted.
 
 Lemma can_send_Mac:
-    synth (analz (knows Attacker evs)) (produce_mac (format_ChallengeRequest 42) A B).
+    synth (analz (knows Attacker evs_ex)) (produce_mac (format_ChallengeRequest 42) A B).
 Proof.
-    unfold evs. unfold publicly_ChallengeRequest.
+    unfold evs_ex. unfold publicly_ChallengeRequest.
     apply synth_init. unfold In.
-    apply analz_tuple with (Xs:=[Tuple (format_ChallengeRequest 42) ; produce_mac (format_ChallengeRequest 42) A B]) ; try firstorder.
+    apply analz_tuple with (Xs:=[Tuple (format_ChallengeRequest 42) ; produce_mac (format_ChallengeRequest 42) A B]) ; 
+        try firstorder.
     apply analz_init. unfold In. apply knows_attacker.
 Qed.
+
+Lemma Network_Msg_always_possible:
+    forall evs B, Network evs -> (exists index, saved_index B B index evs) /\ (exists pc, saved_PC B B pc evs).
+Admitted.
+
+Lemma Network_reset_always_possible:
+    forall evs B, Network evs -> (exists index, fresh_index B evs index).
+Admitted.
+
+(* Théorèmes d'unicité des messages *)
+
+Theorem Msg_unicity:
+    forall evs index pc A A' B B' req req', 
+        Network evs ->
+        List.In ( publicly_Msg A B req index pc ) evs ->
+        List.In ( publicly_Msg A' B' req' index pc ) evs ->
+        A = A' /\ B = B' /\ req = req'.
+Admitted.
+
+Theorem RespFast_unicity:
+    forall evs index pc A A' B B' req req' resp resp',
+        Network evs ->
+        List.In ( publicly_RespFast A B req resp index pc ) evs ->
+        List.In ( publicly_RespFast A' B' req' resp' index pc ) evs ->
+        A = A' /\ B = B' /\ req = req' /\ resp = resp'.
+Admitted.
+
+Theorem ChallengeReply_unicity:
+    forall evs n0 A A' B B' index index' pc pc' req req',
+        Network evs ->
+        List.In ( publicly_ChallengeReply A B n0 req index pc ) evs ->
+        List.In ( publicly_ChallengeReply A' B' n0 req' index' pc' ) evs ->
+        A = A' /\ B = B' /\ req = req' /\ index = index' /\ pc = pc'.
+Admitted.
+
+Theorem RespSlow_unicity:
+    forall evs index pc A A' B B' req req' resp resp',
+        Network evs ->
+        List.In ( publicly_RespSlow A B req resp index pc ) evs ->
+        List.In ( publicly_RespSlow A' B' req' resp' index pc ) evs ->
+        A = A' /\ B = B' /\ req = req' /\ resp = resp'.
+Admitted.
