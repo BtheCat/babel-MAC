@@ -1,166 +1,191 @@
-Require Import ListSet.
 Require Import String.
 Require Import List.
-Require Import Bool.
+Require Import Sets.Ensembles.
 
-Parameter key: Type.
+Import ListNotations.
 
-(* Agents: 
-    - Given a number i, Friend i is the corresponding agent.
-    - The malicious agent is modelled by the nullary constructor Spy
-    - Most symmetric-key protocols rely on a trusted third party, Server, 
-        which has access to all agents' long-term secrets.
-*)
+Parameter bytes: Type.
+
+(* Agents *)
 
 Inductive agent := 
-    | Friend : nat -> agent 
-    | Spy : agent.
-
-Definition eq_agent (A B: agent): bool :=
-    match A, B with 
-        | Friend i, Friend j => Nat.eqb i j
-        | Spy, Spy => true 
-        | _, _ => false 
-    end.
-
-Parameter shrK : agent -> agent -> key.
+    | Peer : nat -> agent 
+    | Attacker : agent.
 
 (* Messages *)
 
+Variant public :=
+    | Literal : bytes -> public 
+    | Agent : agent -> public
+    | PC : nat -> public 
+    | Msg : public
+    | RespFast : public 
+    | ChallengeRequest : public 
+    | ChallengeReply : public
+    | RespSlow : public.
+
+Variant private :=
+    | Nonce : nat -> private 
+    | Index : string -> private.
+ 
 Inductive msg :=
-    | Agent : agent -> msg 
-    (*| Tag : string -> msg *)
-    | Nonce : nat -> msg 
-    | Index : agent -> string -> msg 
-    | PC : agent -> nat -> msg 
-    | Key : key -> msg 
-    | Pair : msg -> msg -> msg 
-    | Hash : key -> msg -> msg
-    | Number : string -> msg 
-    | Msg : string -> msg (* Index *) -> msg (* PC *) -> msg
-    | Resp : string -> string -> msg (* Index *) -> msg (* PC *) -> msg
-    | ChallengeRequest : msg (* Nonce *) -> msg
-    | ChallengeReply : string -> msg (* Nonce *) -> msg (* Number *) -> msg (* PC *) -> msg
-    (*| Bad : agent -> msg*).
+    | Tuple : list msg -> msg 
+    | MAC : msg -> msg
+    | Public :> public -> msg
+    | Private :> private -> msg.
 
-(* Axiom crypt_secure: forall (k: key) (x: msg), Crypt k x /\ Level_Low x -> Level_Low k. *)
+Inductive analz (H: Ensemble msg) (X: msg): Prop :=
+    | analz_init: In msg H X -> analz H X
+    | analz_tuple Xs: analz H (Tuple Xs) -> List.In X Xs -> analz H X.
 
-(* Events *)
-Inductive event := 
-    | Says  : agent ->  agent -> msg -> event 
-    | Notes :           agent -> msg -> event.
+Inductive synth (H: Ensemble msg): Ensemble msg :=
+    | synth_init X: In msg H X -> synth H X
+    | synth_public p: synth H (Public p)
+    | synth_tuple Xs: (forall X, List.In X Xs -> synth H X) -> synth H (Tuple Xs)
+    | synth_mac X: synth H X -> synth H (MAC X).
 
-(* Spy's knowledge *)
-
-Inductive initState: agent -> (msg -> Prop) -> Prop :=
-    | initState_Friend i (L: msg -> Prop): L (PC (Friend i) 0) 
-            -> L (Index (Friend i) "init") 
-            -> initState (Friend i) L.
-
-
-Inductive analz: msg -> (msg -> Prop) -> Prop :=
-    | analz_init X (H: msg -> Prop): (H X) -> analz X H
-    | analz_pair_left X Y H: analz (Pair X Y) H -> analz X H
-    | analz_pair_right X Y H: analz (Pair X Y) H -> analz Y H
-    | analz_hash K X H: analz (Hash K X) H -> analz (Key K) H -> analz X H.
-
-Inductive synth: msg -> (msg -> Prop) -> Prop :=
-    | synth_init X (H: msg -> Prop): (H X) -> synth X H
-    | synth_agent (a: agent) H: synth (Agent a) H
-    | synth_pair X Y H: synth X H -> synth Y H -> synth (Pair X Y) H
-    | synth_crypt K X H: synth (Key K) H -> synth X H -> synth (Hash K X) H.
-
-Inductive parts: msg -> (msg -> Prop) -> Prop :=
-    | parts_init X (H: msg -> Prop): (H X) -> parts X H
-    | parts_pair_left X Y H: parts (Pair X Y) H -> parts X H
-    | parts_pair_right X Y H: parts (Pair X Y) H -> parts Y H
-    | parts_hash K X H: parts (Hash K X) H -> parts X H.
-
-Lemma analz_implies_parts:
-    forall X H, analz X H -> parts X H.
-Proof.
-    intros X H. intro Hanalz. induction Hanalz.
-    - apply parts_init. assumption.
-    - apply parts_pair_left with (Y:=Y). assumption.
-    - apply parts_pair_right with (X:=X). assumption.
-    - apply parts_hash with (K:=K). assumption. 
-Qed.
-
-Fixpoint used (evs: list event) (m: msg): Prop :=
-    match evs with 
-        | nil => False 
-        | (Says A B p)::evs' => (parts p (fun m' => m' = m)) \/ used evs' m 
-        | (Notes A p)::evs' => (parts p (fun m' => m' = m)) \/ used evs' m 
-    end.
-
-Definition gt_nat_option (no mo: option nat): Prop :=
-    match no, mo with 
-        | Some n, Some m => n > m 
-        | _, _ => False 
-    end. 
-
-Fixpoint fresh_msg (evs: list event) (A: agent) (m: msg): Prop :=
-    match evs with 
-        | nil => False 
-        | (Says X Y p)::evs' => ( (X = A /\ parts p (fun m' => m' = m)) 
-                                    \/ (Y = A /\ parts p (fun m' => m' = m) ) )
-                                \/ fresh_msg evs' A m
-        | (Notes X p)::evs' => ( X = A /\ parts p (fun m' => m' = m) ) \/ fresh_msg evs' A m
-    end. 
-
-Fixpoint get_index (evs: list event) (A B: agent): option string :=
-    match evs with
-        | nil => None
-        | (Notes X (Index Y index_Y))::evs' => 
-                if (eq_agent X A) && (eq_agent Y B) then Some index_Y else get_index evs' A B 
-        | _::evs' => get_index evs' A B
-    end.
-
-Fixpoint get_PC (evs: list event) (A B: agent): option nat :=
-    match evs with 
-        | nil => None
-        | (Notes X (PC Y PC_Y))::evs' =>
-                if (eq_agent X A) && (eq_agent Y B) then Some PC_Y else get_PC evs' A B 
-        | _::evs' => get_PC evs' A B 
-    end. 
-
-Inductive Logged: list event -> Prop :=
-    | Logged_init: forall (X: agent), 
-        Logged (cons (Notes X (PC X 0)) (cons (Notes X (Index X "init")) nil))
-
-    | Logged_init_msg: forall evs A B index_B PC_B kab messg,
-        Logged evs -> kab = shrK A B -> Some PC_B = get_PC evs B B -> Some index_B = get_index evs B B ->
-        let messg_msg := Msg messg (Index B index_B) (PC B PC_B) in
-        Logged ( cons (Says B A (Pair messg_msg (Hash kab messg_msg)))
-                    ( cons (Notes B (PC B (PC_B + 1))) evs ))
+Inductive parts (X: msg) (H: Ensemble msg): Prop :=
+    | parts_init: In msg H X -> parts X H
+    | parts_tuple Xs: parts (Tuple Xs) H -> List.In X Xs -> parts X H
+    | parts_mac: parts (MAC X) H -> parts X H.
     
-    | Logged_accept_msg: forall evs A B index_B PC_B kab messg resp,
-        let messg_msg := Msg messg (Index B index_B) (PC B PC_B) in
-        Logged evs -> In (Says B A (Pair messg_msg (Hash kab messg_msg))) evs ->
-            Some index_B = get_index evs A B -> gt_nat_option (Some PC_B) (get_PC evs A B) ->
-        let resp_msg := Resp messg resp (Index B index_B) (PC B PC_B) in
-        Logged ( cons (Notes A (PC B PC_B)) ( cons (Says A B (Pair resp_msg (Hash kab resp_msg))) evs ) )
+(* Events *)
+
+Variant visibility :=
+    | Publicly  : agent ->  agent -> visibility 
+    | Privately :           agent -> visibility.
+
+Record event := E { mode: visibility ; payload: msg }.
+
+Definition publicly A B msg := E (Publicly A B) msg.
+Definition privately A msg := E (Privately A) msg.
+
+Definition format_index B index := Tuple [(Agent B: msg) ; (Index index: msg)].
+Definition format_PC B pc := Tuple [(Agent B: msg) ; (PC pc: msg)].
+
+Definition privately_index A B index := privately A (format_index B index).
+Definition privately_PC A B pc := privately A (format_PC B pc).
+
+Definition format_Msg req index pc := Tuple [Public Msg ; Public (Literal req) ; 
+    Private (Index index) ; Public (PC pc)].
+Definition format_RespFast req resp index pc := Tuple [Public RespFast ; Public (Literal req) ; 
+    Public (Literal resp) ; Private (Index index) ; Public (PC pc)].
+Definition format_ChallengeRequest n0 := Tuple [Public ChallengeRequest ; Private (Nonce n0)].
+Definition format_ChallengeReply req n0 index pc := Tuple [Public ChallengeReply ; Public (Literal req) ;
+    Private (Nonce n0) ; Private (Index index) ; Public (PC pc)].
+Definition format_RespSlow req resp index pc := Tuple [Public RespSlow ; Public (Literal req) ; 
+    Public (Literal resp) ; Private (Index index) ; Public (PC pc)].
+
+Definition publicly_Msg A B req index pc := 
+    let msg := format_Msg req index pc in publicly A B (Tuple [msg ; MAC msg]).
+Definition publicly_RespFast A B req resp index pc := 
+    let msg := format_RespFast req resp index pc in publicly A B (Tuple [msg ; MAC msg]).
+Definition publicly_ChallengeRequest A B n0 := 
+    let msg := format_ChallengeRequest n0 in publicly A B (Tuple [msg ; MAC msg]).
+Definition publicly_ChallengeReply A B req n0 index pc := 
+    let msg := format_ChallengeReply req n0 index pc in publicly A B (Tuple [msg ; MAC msg]).
+Definition publicly_RespSlow A B req resp index pc := 
+    let msg := format_RespSlow req resp index pc in publicly A B (Tuple [msg ; MAC msg]).
+
+Definition capture := list event.
+
+Inductive init_state: agent -> Ensemble msg :=
+    | init_state_PC: forall A B, init_state A (format_PC B 0)
+    | init_state_index: forall A s, init_state A (format_index A s).
+
+Inductive knows: agent -> capture -> Ensemble msg :=
+    | knows_init A m: init_state A m -> knows A [] m 
+    | knows_attacker A B X evs: knows Attacker ( publicly A B X :: evs ) X
+    | knows_privately A X evs: knows A ( privately A X :: evs ) X
+    | knows_publicly A B X evs: knows A ( publicly A B X :: evs ) X
+    | knows_later A e evs m: knows A evs m -> knows A ( e :: evs ) m.
+
+Inductive used (m: msg): capture -> Prop :=
+    | used_init A: parts m (init_state A) -> used m []
+    | used_now ev evs: parts m (Singleton msg ev.(payload)) -> used m (ev :: evs)
+    | used_later ev evs: used m evs -> used m (ev :: evs).
+
+Definition fresh_index B evs index := not ( analz (knows B evs) (Index index) ).
+Definition fresh_nonce A evs n0 := not ( analz (knows A evs) (Nonce n0) ).
+
+(* Parameters A B: agent.
+Definition evs := [ publicly_ChallengeRequest A B 42].
+Lemma f:
+    fresh_nonce A evs 42 -> False.
+Proof.
+    unfold fresh_nonce. intro H. apply H.
+    assert ( List.In (Private (Nonce 42)) [Public ChallengeRequest ; Private (Nonce 42) ]  ).
+    firstorder.
+    
+    assert ( List.In (Tuple [Public ChallengeRequest ; Private (Nonce 42)]) 
+        [Tuple [Public ChallengeRequest ; Private (Nonce 42) ] ; 
+            MAC (Tuple [Public ChallengeRequest ; Private (Nonce 42)])]  ).
+    firstorder.
+    eapply analz_tuple ; eauto.
+    eapply analz_tuple ; eauto. 
+    apply analz_init. unfold In.
+    apply knows_publicly.
+Qed. *)
+
+Inductive saved (A: agent) (P Q: msg -> Prop): capture -> Prop :=
+    | saved_now m evs: P m -> Q m -> saved A P Q ( (privately A m) :: evs )
+    | saved_later A' m evs: (A = A' -> not (P m)) -> saved A P Q evs -> saved A P Q ( (privately A' m) :: evs )
+    | saved_skip A' B m evs: saved A P Q evs -> saved A P Q ( (publicly A' B m) :: evs ).
+
+Definition saved_PC A B pc evs :=
+    saved A (fun m => exists pc', m = format_PC B pc') (fun m => m = format_PC B pc) evs.
+
+Definition saved_index A B index evs :=
+    saved A (fun m => exists index', m = format_index B index') 
+        (fun m => m = format_index B index) evs.
+
+Inductive Network: list event -> Prop :=
+    | Network_Attack: forall evs X B,
+        Network evs ->
+        synth (analz (knows Attacker evs)) X ->
+        Network ( publicly Attacker B X :: evs )
+    
+    | Network_init: Network []
+
+    | Network_reset: forall evs B index_B,
+        Network evs -> 
+        fresh_index B evs index_B ->
+        Network ( privately_index B B index_B :: 
+                privately_PC B B 0 :: evs )
+
+    | Network_Msg: forall evs A B req index_B pc_B,
+        Network evs -> 
+        saved_index B B index_B evs -> 
+        saved_PC B B pc_B evs ->
+        Network ( privately_PC B B (pc_B + 1) ::
+                publicly_Msg B A req index_B pc_B :: evs )
+    
+    | Network_RespFast: forall evs A B index_B pc_B req resp pc,
+        Network evs -> 
+        List.In (publicly_Msg B A req index_B pc_B) evs ->
+        saved_index A B index_B evs ->
+        saved_PC A B pc evs -> pc < pc_B -> 
+        Network ( privately_PC A B pc_B ::
+                publicly_RespFast A B req resp index_B pc_B :: evs )
         
-    | Logged_refuse_msg: forall evs A B index_B PC_B kab messg n0,
-        let messg_msg := Msg messg (Index B index_B) (PC B PC_B) in
-        Logged evs -> In (Says B A (Pair messg_msg (Hash kab messg_msg))) evs ->
-        fresh_msg evs A (Nonce n0) -> let challRequest_msg := ChallengeRequest (Nonce n0) in
-        Logged ( cons (Says A B (Pair challRequest_msg (Hash kab challRequest_msg))) evs )
+    | Network_ChallengeRequest: forall evs A B index_B pc_B req n0,
+        Network evs -> 
+        List.In (publicly_Msg B A req index_B pc_B) evs ->
+        fresh_nonce A evs n0 ->
+        Network ( publicly_ChallengeRequest A B n0 :: evs )
         
-    | Logged_chall_reply: forall evs A B n0 kab messg index_B,
-        let challRequest_msg := ChallengeRequest (Nonce n0) in 
-        Logged evs -> In (Says A B (Pair challRequest_msg (Hash kab challRequest_msg))) evs ->
-        fresh_msg evs B (Index B index_B) -> let challReply_msg := ChallengeReply messg (Nonce n0) (Number index_B) (PC B 0) in
-        Logged ( cons (Says B A (Pair challReply_msg (Hash kab challReply_msg)))
-                    ( cons (Notes B (Index B index_B)) 
-                        ( cons (Notes B (PC B 0)) evs ) ) )
+    | Network_ChallengeReply: forall evs A B n0 req index_B,
+        Network evs -> 
+        List.In (publicly_ChallengeRequest A B n0) evs ->
+        fresh_index B evs index_B ->
+        Network ( privately_index B B index_B ::
+                privately_PC B B 0 :: 
+                publicly_ChallengeReply B A req n0 index_B 0 :: evs ) 
                         
-    | Logged_chall_accept: forall evs A B n0 kab index_B PC_B messg resp,
-        let challReply_msg := ChallengeReply messg (Nonce n0) (Number index_B) (PC B PC_B) in 
-        let challRequest_msg := ChallengeRequest (Nonce n0) in
-        Logged evs -> In (Says B A (Pair challReply_msg (Hash kab challReply_msg))) evs ->
-        In (Says A B (Pair challRequest_msg (Hash kab challRequest_msg))) evs ->
-        let resp_msg := Resp messg resp (Index B index_B) (PC B PC_B) in
-        Logged ( cons (Says A B (Pair resp_msg (Hash kab resp_msg))) 
-                    ( cons (Notes A (Index B index_B)) 
-                        ( cons (Notes A (PC B PC_B)) evs ) ) ).
+    | Network_RespSlow: forall evs A B n0 index_B pc_B req resp,
+        Network evs -> 
+        List.In (publicly_ChallengeRequest A B n0) evs ->
+        List.In (publicly_ChallengeReply B A req n0 index_B pc_B) evs ->
+        Network ( privately_index A B index_B ::
+                privately_PC A B pc_B :: 
+                publicly_RespSlow A B req resp index_B pc_B :: evs ).
