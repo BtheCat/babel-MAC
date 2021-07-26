@@ -18,11 +18,11 @@ Variant public :=
     | Literal : bytes -> public 
     | Agent : agent -> public
     | PC : nat -> public 
-    | Msg : public
-    | RespFast : public 
-    | ChallengeRequest : public 
-    | ChallengeReply : public
-    | RespSlow : public.
+    | TagMsg : public
+    | TagRespFast : public 
+    | TagChallengeRequest : public 
+    | TagChallengeReply : public
+    | TagRespSlow : public.
 
 Variant private :=
     | Nonce : nat -> private 
@@ -31,23 +31,30 @@ Variant private :=
 Inductive msg :=
     | Tuple : list msg -> msg 
     | MAC : msg -> msg
-    | Public :> public -> msg
-    | Private :> private -> msg.
+    | Atom : public + private -> msg. 
+
+(* Le prédicat inductif 'analz' permet de générer un ensemble de message à partir d'un ensemble de message de départ.
+    - tout message appartenant à l'ensemble de départ est analysé
+    - si un message analysé est un tuple, alors on peut analyser tout les sous messages de ce tuple
+    - il n'y a pas d'autres prédicat récursif donc ces deux règles suffisent
+    - les prédicats unitaires peuvent être analysé du moment qu'ils sont présent dans un Tuple grâce à la deuxième règle
+    - on ne peut pas analyser le contenu d'un MAC *)
 
 Inductive analz (H: Ensemble msg) (X: msg): Prop :=
     | analz_init: In msg H X -> analz H X
     | analz_tuple Xs: analz H (Tuple Xs) -> List.In X Xs -> analz H X.
 
+(* Le prédicat inductif 'synth' permet de générer un ensemble de message synthétisables à partir de messages de départ.
+    - tout message de départ est synthétisable
+    - n'importe quel message de type Public est synthétisable
+    - un tuple est synthétisable lorsque tout les messages qui le compose le sont
+    - un mac d'un message synthétisable est synthétisable *)
+
 Inductive synth (H: Ensemble msg): Ensemble msg :=
     | synth_init X: In msg H X -> synth H X
-    | synth_public p: synth H (Public p)
+    | synth_public p: synth H (Atom (inl p))
     | synth_tuple Xs: (forall X, List.In X Xs -> synth H X) -> synth H (Tuple Xs)
     | synth_mac X: synth H X -> synth H (MAC X).
-
-Inductive parts (X: msg) (H: Ensemble msg): Prop :=
-    | parts_init: In msg H X -> parts X H
-    | parts_tuple Xs: parts (Tuple Xs) H -> List.In X Xs -> parts X H
-    | parts_mac: parts (MAC X) H -> parts X H.
     
 (* Events *)
 
@@ -60,21 +67,21 @@ Record event := E { mode: visibility ; payload: msg }.
 Definition publicly A B msg := E (Publicly A B) msg.
 Definition privately A msg := E (Privately A) msg.
 
-Definition format_index B index := Tuple [(Agent B: msg) ; (Index index: msg)].
-Definition format_PC B pc := Tuple [(Agent B: msg) ; (PC pc: msg)].
+Definition format_index B index := Tuple [Atom (inl (Agent B)) ; Atom (inr (Index index))].
+Definition format_PC B pc := Tuple [Atom (inl (Agent B)) ; Atom (inl (PC pc))].
 
 Definition privately_index A B index := privately A (format_index B index).
 Definition privately_PC A B pc := privately A (format_PC B pc).
 
-Definition format_Msg req index pc := Tuple [Public Msg ; Public (Literal req) ; 
-    Private (Index index) ; Public (PC pc)].
-Definition format_RespFast req resp index pc := Tuple [Public RespFast ; Public (Literal req) ; 
-    Public (Literal resp) ; Private (Index index) ; Public (PC pc)].
-Definition format_ChallengeRequest n0 := Tuple [Public ChallengeRequest ; Private (Nonce n0)].
-Definition format_ChallengeReply req n0 index pc := Tuple [Public ChallengeReply ; Public (Literal req) ;
-    Private (Nonce n0) ; Private (Index index) ; Public (PC pc)].
-Definition format_RespSlow req resp index pc := Tuple [Public RespSlow ; Public (Literal req) ; 
-    Public (Literal resp) ; Private (Index index) ; Public (PC pc)].
+Definition format_Msg req index pc := Tuple [Atom (inl TagMsg) ; Atom (inl (Literal req)) ; 
+    Atom (inr (Index index)) ; Atom (inl (PC pc))].
+Definition format_RespFast req resp index pc := Tuple [Atom (inl TagRespFast) ; Atom (inl (Literal req)) ; 
+    Atom (inl (Literal resp)) ; Atom (inr (Index index)) ; Atom (inl (PC pc))].
+Definition format_ChallengeRequest n0 := Tuple [Atom (inl TagChallengeRequest) ; Atom (inr (Nonce n0))].
+Definition format_ChallengeReply req n0 index pc := Tuple [Atom (inl TagChallengeReply) ; Atom (inl (Literal req)) ;
+    Atom (inr (Nonce n0)) ; Atom (inr (Index index)) ; Atom (inl (PC pc))].
+Definition format_RespSlow req resp index pc := Tuple [Atom (inl TagRespSlow) ; Atom (inl (Literal req)) ; 
+    Atom (inl (Literal resp)) ; Atom (inr (Index index)) ; Atom (inl (PC pc))].
 
 Definition publicly_Msg A B req index pc := 
     let msg := format_Msg req index pc in publicly A B (Tuple [msg ; MAC msg]).
@@ -100,32 +107,37 @@ Inductive knows: agent -> capture -> Ensemble msg :=
     | knows_publicly A B X evs: knows A ( publicly A B X :: evs ) X
     | knows_later A e evs m: knows A evs m -> knows A ( e :: evs ) m.
 
-Inductive used (m: msg): capture -> Prop :=
-    | used_init A: parts m (init_state A) -> used m []
-    | used_now ev evs: parts m (Singleton msg ev.(payload)) -> used m (ev :: evs)
-    | used_later ev evs: used m evs -> used m (ev :: evs).
+Definition fresh_index B evs index := not ( analz (knows B evs) (Atom (inr (Index index))) ).
+Definition fresh_nonce A evs n0 := not ( analz (knows A evs) (Atom (inr (Nonce n0))) ).
 
-Definition fresh_index B evs index := not ( analz (knows B evs) (Index index) ).
-Definition fresh_nonce A evs n0 := not ( analz (knows A evs) (Nonce n0) ).
-
-(* Parameters A B: agent.
+Parameters A B: agent.
 Definition evs := [ publicly_ChallengeRequest A B 42].
 Lemma f:
     fresh_nonce A evs 42 -> False.
 Proof.
     unfold fresh_nonce. intro H. apply H.
-    assert ( List.In (Private (Nonce 42)) [Public ChallengeRequest ; Private (Nonce 42) ]  ).
+    unfold evs. unfold publicly_ChallengeRequest.
+    unfold format_ChallengeRequest. 
+    apply analz_tuple with (Xs := [Atom (inl TagChallengeRequest) ; Atom (inr (Nonce 42))]) ; try firstorder.
+    apply analz_tuple with (Xs := [Tuple [Atom (inl TagChallengeRequest) ; Atom (inr (Nonce 42)) ] ; 
+        MAC (Tuple [Atom (inl TagChallengeRequest) ; Atom (inr (Nonce 42))])]) ; try firstorder.
+    apply analz_init. unfold In. apply knows_publicly.
+
+    (*
+    unfold fresh_nonce. intro H. apply H.
+    assert ( List.In (Private (Nonce 42)) [Public TagChallengeRequest ; Private (Nonce 42) ]  ).
     firstorder.
     
-    assert ( List.In (Tuple [Public ChallengeRequest ; Private (Nonce 42)]) 
-        [Tuple [Public ChallengeRequest ; Private (Nonce 42) ] ; 
-            MAC (Tuple [Public ChallengeRequest ; Private (Nonce 42)])]  ).
+    assert ( List.In (Tuple [Public TagChallengeRequest ; Private (Nonce 42)]) 
+        [Tuple [Public TagChallengeRequest ; Private (Nonce 42) ] ; 
+            MAC (Tuple [Public TagChallengeRequest ; Private (Nonce 42)])]  ).
     firstorder.
     eapply analz_tuple ; eauto.
     eapply analz_tuple ; eauto. 
     apply analz_init. unfold In.
     apply knows_publicly.
-Qed. *)
+    *)
+Qed.
 
 Inductive saved (A: agent) (P Q: msg -> Prop): capture -> Prop :=
     | saved_now m evs: P m -> Q m -> saved A P Q ( (privately A m) :: evs )
@@ -189,3 +201,18 @@ Inductive Network: list event -> Prop :=
         Network ( privately_index A B index_B ::
                 privately_PC A B pc_B :: 
                 publicly_RespSlow A B req resp index_B pc_B :: evs ).
+
+
+Lemma not_synth_mac:
+    forall H X, synth H (MAC X) -> False.
+Proof.
+Admitted.
+
+Lemma can_send_Mac:
+    synth (analz (knows Attacker evs)) (MAC (format_ChallengeRequest 42)).
+Proof.
+    unfold evs. unfold publicly_ChallengeRequest.
+    apply synth_init. unfold In.
+    apply analz_tuple with (Xs:=[format_ChallengeRequest 42 ; MAC (format_ChallengeRequest 42)]) ; try firstorder.
+    apply analz_init. unfold In. apply knows_attacker.
+Qed.
