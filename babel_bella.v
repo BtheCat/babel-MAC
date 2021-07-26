@@ -73,26 +73,29 @@ Definition format_PC B pc := Tuple [Atom (inl (Agent B)) ; Atom (inl (PC pc))].
 Definition privately_index A B index := privately A (format_index B index).
 Definition privately_PC A B pc := privately A (format_PC B pc).
 
-Definition format_Msg req index pc := Tuple [Atom (inl TagMsg) ; Atom (inl (Literal req)) ; 
+Definition format_Msg req index pc := [Atom (inl TagMsg) ; Atom (inl (Literal req)) ; 
     Atom (inr (Index index)) ; Atom (inl (PC pc))].
-Definition format_RespFast req resp index pc := Tuple [Atom (inl TagRespFast) ; Atom (inl (Literal req)) ; 
+Definition format_RespFast req resp index pc := [Atom (inl TagRespFast) ; Atom (inl (Literal req)) ; 
     Atom (inl (Literal resp)) ; Atom (inr (Index index)) ; Atom (inl (PC pc))].
-Definition format_ChallengeRequest n0 := Tuple [Atom (inl TagChallengeRequest) ; Atom (inr (Nonce n0))].
-Definition format_ChallengeReply req n0 index pc := Tuple [Atom (inl TagChallengeReply) ; Atom (inl (Literal req)) ;
+Definition format_ChallengeRequest n0 := [Atom (inl TagChallengeRequest) ; Atom (inr (Nonce n0))].
+Definition format_ChallengeReply req n0 index pc := [Atom (inl TagChallengeReply) ; Atom (inl (Literal req)) ;
     Atom (inr (Nonce n0)) ; Atom (inr (Index index)) ; Atom (inl (PC pc))].
-Definition format_RespSlow req resp index pc := Tuple [Atom (inl TagRespSlow) ; Atom (inl (Literal req)) ; 
+Definition format_RespSlow req resp index pc := [Atom (inl TagRespSlow) ; Atom (inl (Literal req)) ; 
     Atom (inl (Literal resp)) ; Atom (inr (Index index)) ; Atom (inl (PC pc))].
 
+Definition produce_mac msg src dest :=
+    MAC ( Tuple ( (Atom (inl (Agent src))) :: (Atom (inl (Agent dest))) :: msg ) ).
+
 Definition publicly_Msg A B req index pc := 
-    let msg := format_Msg req index pc in publicly A B (Tuple [msg ; MAC msg]).
+    let msg := format_Msg req index pc in publicly B A (Tuple [Tuple msg ; produce_mac msg B A]).
 Definition publicly_RespFast A B req resp index pc := 
-    let msg := format_RespFast req resp index pc in publicly A B (Tuple [msg ; MAC msg]).
+    let msg := format_RespFast req resp index pc in publicly A B (Tuple [Tuple msg ; produce_mac msg A B]).
 Definition publicly_ChallengeRequest A B n0 := 
-    let msg := format_ChallengeRequest n0 in publicly A B (Tuple [msg ; MAC msg]).
+    let msg := format_ChallengeRequest n0 in publicly A B (Tuple [Tuple msg ; produce_mac msg A B]).
 Definition publicly_ChallengeReply A B req n0 index pc := 
-    let msg := format_ChallengeReply req n0 index pc in publicly A B (Tuple [msg ; MAC msg]).
+    let msg := format_ChallengeReply req n0 index pc in publicly A B (Tuple [Tuple msg ; produce_mac msg B A]).
 Definition publicly_RespSlow A B req resp index pc := 
-    let msg := format_RespSlow req resp index pc in publicly A B (Tuple [msg ; MAC msg]).
+    let msg := format_RespSlow req resp index pc in publicly A B (Tuple [Tuple msg ; produce_mac msg A B]).
 
 Definition capture := list event.
 
@@ -120,7 +123,7 @@ Proof.
     unfold format_ChallengeRequest. 
     apply analz_tuple with (Xs := [Atom (inl TagChallengeRequest) ; Atom (inr (Nonce 42))]) ; try firstorder.
     apply analz_tuple with (Xs := [Tuple [Atom (inl TagChallengeRequest) ; Atom (inr (Nonce 42)) ] ; 
-        MAC (Tuple [Atom (inl TagChallengeRequest) ; Atom (inr (Nonce 42))])]) ; try firstorder.
+        MAC (Tuple [Atom (inl (Agent A)) ; Atom (inl (Agent B)) ; Atom (inl TagChallengeRequest) ; Atom (inr (Nonce 42))])]) ; try firstorder.
     apply analz_init. unfold In. apply knows_publicly.
 
     (*
@@ -209,10 +212,10 @@ Proof.
 Admitted.
 
 Lemma can_send_Mac:
-    synth (analz (knows Attacker evs)) (MAC (format_ChallengeRequest 42)).
+    synth (analz (knows Attacker evs)) (produce_mac (format_ChallengeRequest 42) A B).
 Proof.
     unfold evs. unfold publicly_ChallengeRequest.
     apply synth_init. unfold In.
-    apply analz_tuple with (Xs:=[format_ChallengeRequest 42 ; MAC (format_ChallengeRequest 42)]) ; try firstorder.
+    apply analz_tuple with (Xs:=[Tuple (format_ChallengeRequest 42) ; produce_mac (format_ChallengeRequest 42) A B]) ; try firstorder.
     apply analz_init. unfold In. apply knows_attacker.
 Qed.
