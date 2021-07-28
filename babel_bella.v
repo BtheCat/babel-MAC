@@ -288,6 +288,19 @@ Lemma Msg_always_possible:
         Network sigma evs -> 
         (exists index, saved_index sigma B B index) 
         /\ (exists pc, saved_PC sigma B B pc).
+Proof.
+    intros sigma evs B. intro Hnetwork. induction Hnetwork.
+    - assumption.
+    - unfold init_global_state in H. split. 
+        * unfold saved_index. unfold lookup_index. subst. 
+            exists (index_seed B). simpl.
+            assert ( eqb B B = true ). admit.
+            rewrite H. reflexivity.
+        * unfold saved_PC. unfold lookup_PC. subst.
+            exists 0. simpl. 
+            assert ( eqb B B = true ). admit.
+            rewrite H. reflexivity.
+    -  
 Admitted.
 
 Theorem can_Msg:
@@ -346,6 +359,23 @@ Qed.
 
 (* Théorèmes de spoofing *)
 
+Lemma insert_attack:
+    forall sigma evs A B X, 
+        Network sigma evs ->
+        List.In (publicly A B X) evs ->
+        List.In (publicly Attacker B X) evs.
+Admitted.
+
+Lemma RespFast_Inversion:
+    forall sigma evs A B req resp index pc,
+        Network sigma evs ->
+        List.In (publicly_RespFast A B req resp index pc) evs ->
+        exists pc',
+            List.In (publicly_Msg B A req index pc) evs 
+            /\ saved_index sigma A B index 
+            /\ saved_PC sigma A B pc' /\ pc' < pc.
+Admitted.
+
 Theorem spoofing_RespFast:
     forall sigma evs A B req resp index pc,
         Network sigma evs ->
@@ -353,8 +383,22 @@ Theorem spoofing_RespFast:
         exists sigma' evs', 
             Network sigma' evs'
             /\ List.In (publicly_RespFast A B req resp index pc) evs' 
-            /\ List.In (publicly Attacker A (format_MAC_Msg A B req index pc)) evs' .
-Admitted.
+            /\ List.In (publicly Attacker A (format_MAC_Msg B A req index pc)) evs'.
+Proof.
+    intros sigma evs A B req resp index pc. intros Hnetwork HIn.
+    assert (exists pc', 
+                List.In ( publicly_Msg B A req index pc ) evs
+                /\ saved_index sigma A B index 
+                /\ saved_PC sigma A B pc' /\ pc' < pc ) 
+            as 
+            [pc' (HinMsg & (HsavedIndex & (HsavedPC & HorderPC)))]. 
+    + eapply RespFast_Inversion ; eauto.
+    + eexists. eexists. split.
+        - eapply Network_RespFast ; eauto.
+        - split. 
+            * eapply in_eq. 
+            * apply in_cons. eapply insert_attack ; eauto.
+Qed.
 
 (* Théorèmes d'unicité des événements *)
 
