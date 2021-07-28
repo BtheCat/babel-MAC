@@ -88,13 +88,16 @@ Definition privately A msg := E (Privately A) msg.
 
 Definition format_index index := Atom (inr (Index index)).
 Definition format_nonce nonce := Atom (inr (Nonce nonce)).
+Definition format_Accept A B pkt index pc := Tuple [Atom (inl TagAccept) ; 
+    Atom (inl (Agent A)) ; Atom (inl (Agent B)) ; Atom (inl (Literal pkt)) ; 
+    Atom (inr (Index index)) ; Atom (inl (PC pc))].
 
 Definition privately_index A index := privately A (format_index index).
 Definition privately_nonce A nonce := privately A (format_nonce nonce).
+Definition privately_Accept A B pkt index pc := 
+    privately A (format_Accept A B pkt index pc).
 
 Definition format_Send pkt index pc := Tuple [Atom (inl TagSend) ; Atom (inl (Literal pkt)) ; 
-    Atom (inr (Index index)) ; Atom (inl (PC pc))].
-Definition format_Accept pkt index pc := Tuple [Atom (inl TagAccept) ; Atom (inl (Literal pkt)) ; 
     Atom (inr (Index index)) ; Atom (inl (PC pc))].
 Definition format_ChallengeRequest n0 := Tuple [Atom (inl TagChallengeRequest) ; Atom (inr (Nonce n0))].
 Definition format_ChallengeReply n0 index pc := Tuple [Atom (inl TagChallengeReply) ;
@@ -114,8 +117,6 @@ Definition format_MAC_ChallengeReply src dest n0 index pc :=
 
 Definition publicly_Send A B pkt index pc := 
     publicly A B (format_MAC_Send A B pkt index pc).
-Definition privately_Accept A B pkt index pc := 
-    publicly A B (format_MAC_Accept A B pkt index pc).
 Definition publicly_ChallengeRequest A B n0 := 
     publicly A B (format_MAC_ChallengeRequest A B n0).
 Definition publicly_ChallengeReply A B n0 index pc := 
@@ -427,13 +428,6 @@ Theorem Send_authenticity:
         Network sigma evs ->
         List.In (publicly A' B' (format_MAC_Send A B pkt index pc)) evs ->
         List.In (publicly_Send A B pkt index pc) evs.
-Admitted.
-
-Theorem Accept_authenticity:
-    forall sigma evs A A' B B' pkt index pc,
-        Network sigma evs ->
-        List.In (publicly A' B' (format_MAC_Accept A B pkt index pc)) evs ->
-        List.In (privately_Accept A B pkt index pc) evs.
 Admitted.
 
 Theorem ChallengeRequest_authenticity:
