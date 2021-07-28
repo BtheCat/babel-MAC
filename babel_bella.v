@@ -354,7 +354,7 @@ Theorem spoofing_RespFast:
             /\ Network sigma1 evs'.
 Admitted.
 
-(* Théorèmes d'unicité des messages *)
+(* Théorèmes d'unicité des événements *)
 
 Lemma compatibiliy_knows_in: forall evs A B X,
     List.In (publicly A B X) evs -> knows Attacker evs X.
@@ -383,26 +383,11 @@ Theorem RespFast_unicity:
         unique ( publicly_RespFast A B req resp index pc ) evs.
 Admitted.
 
-Theorem ChallengeRequest_unicity:
-    forall sigma evs A n0 B B',
-        Network sigma evs ->
-        List.In ( publicly_ChallengeRequest A B n0 ) evs ->
-        List.In ( publicly_ChallengeRequest A B' n0 ) evs ->
-        B = B'.
-Admitted.
-
-Theorem ChallengeReply_unicity:
-    forall sigma evs n0 A A' B B' index index' pc pc' req req',
-        Network sigma evs ->
-        List.In ( publicly_ChallengeReply A B n0 req index pc ) evs ->
-        List.In ( publicly_ChallengeReply A' B' n0 req' index' pc' ) evs ->
-        A = A' /\ B = B' /\ req = req' /\ index = index' /\ pc = pc'.
-Admitted.
-
 Theorem RespSlow_unicity:
     forall sigma evs index pc A A' B B' req req' resp resp',
         Network sigma evs ->
-        List.In ( publicly_RespSlow A B req resp index pc ) evs ->
-        List.In ( publicly_RespSlow A' B' req' resp' index pc ) evs ->
-        A = A' /\ B = B' /\ req = req' /\ resp = resp'.
+        unique ( publicly_RespSlow A B req resp index pc ) evs.
 Admitted.
+
+(* Théorèmes d'authenticité *)
+
