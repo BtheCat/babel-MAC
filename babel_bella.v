@@ -295,7 +295,7 @@ Inductive Network: global_state -> capture -> Prop :=
 
 Lemma Msg_always_possible:
     forall sigma evs B, Network sigma evs -> 
-        (exists index, saved_index B B index sigma) /\ (exists pc, saved_PC B B pc sigma).
+        (exists index, saved_index sigma B B index) /\ (exists pc, saved_PC sigma B B pc).
 Admitted.
 
 Theorem can_Msg:
@@ -314,11 +314,11 @@ Proof.
         exists [publicly_Msg B A req index pc]. auto.
 Qed.
 
+(* Network_reset est peut être redondant, on commente donc le théorème et le lemme associé
 Lemma reset_always_possible:
     forall sigma evs B, Network sigma evs -> (exists index, fresh_index B evs index).
 Admitted.
 
-(* Network_reset est peut être redondant, on commente donc le théorème
 Theorem can_reset:
     forall sigma evs B, Network sigma evs -> 
         exists sigma1 evs' index, 
@@ -378,16 +378,50 @@ Proof.
 Qed.
 
 Theorem RespFast_unicity:
-    forall sigma evs index pc A A' B B' req req' resp resp',
+    forall sigma evs index pc A B req resp,
         Network sigma evs ->
         unique ( publicly_RespFast A B req resp index pc ) evs.
 Admitted.
 
 Theorem RespSlow_unicity:
-    forall sigma evs index pc A A' B B' req req' resp resp',
+    forall sigma evs index pc A B req resp,
         Network sigma evs ->
         unique ( publicly_RespSlow A B req resp index pc ) evs.
 Admitted.
 
 (* Théorèmes d'authenticité *)
 
+Theorem Msg_authenticity:
+    forall sigma evs A A' B B' req index pc,
+        Network sigma evs ->
+        List.In (publicly A' B' (format_MAC_Msg A B req index pc)) evs ->
+        List.In (publicly_Msg A B req index pc) evs.
+Admitted.
+
+Theorem RespFast_authenticity:
+    forall sigma evs A A' B B' req resp index pc,
+        Network sigma evs ->
+        List.In (publicly A' B' (format_MAC_RespFast A B req resp index pc)) evs ->
+        List.In (publicly_RespFast A B req resp index pc) evs.
+Admitted.
+
+Theorem ChallengeRequest_authenticity:
+    forall sigma evs A A' B B' n0,
+        Network sigma evs ->
+        List.In (publicly A' B' (format_MAC_ChallengeRequest A B n0)) evs ->
+        List.In (publicly_ChallengeRequest A B n0) evs.
+Admitted.
+
+Theorem ChallengeReply_authenticity:
+    forall sigma evs A A' B B' req n0 index pc,
+        Network sigma evs ->
+        List.In (publicly A' B' (format_MAC_ChallengeReply A B req n0 index pc)) evs ->
+        List.In (publicly_ChallengeReply A B req n0 index pc) evs.
+Admitted.
+
+Theorem RespSlow_authenticity:
+    forall sigma evs A A' B B' req resp index pc,
+        Network sigma evs ->
+        List.In (publicly A' B' (format_MAC_RespSlow A B req resp index pc)) evs ->
+        List.In (publicly_RespSlow A B req resp index pc) evs.
+Admitted.
