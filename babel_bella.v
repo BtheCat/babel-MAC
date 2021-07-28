@@ -88,9 +88,11 @@ Definition publicly A B msg := E (Publicly A B) msg.
 Definition privately A msg := E (Privately A) msg.
 
 Definition format_index B index := Tuple [Atom (inl (Agent B)) ; Atom (inr (Index index))].
+Definition format_nonce B nonce := Tuple [Atom (inl (Agent B)) ; Atom (inr (Nonce nonce))].
 Definition format_PC B pc := Tuple [Atom (inl (Agent B)) ; Atom (inl (PC pc))].
 
 Definition privately_index A B index := privately A (format_index B index).
+Definition privately_nonce A B nonce := privately A (format_nonce B nonce).
 Definition privately_PC A B pc := privately A (format_PC B pc).
 
 Definition format_Msg req index pc := Tuple [Atom (inl TagMsg) ; Atom (inl (Literal req)) ; 
@@ -239,7 +241,9 @@ Inductive Network: capture -> global_state -> Prop :=
     | Network_reset: forall evs sigma B index_B,
         Network evs sigma -> 
         fresh_index B evs index_B ->
-        Network evs ( update_PC_index sigma B B 0 index_B )
+        Network 
+            ( privately_index B B index_B :: evs )
+            ( update_PC_index sigma B B 0 index_B )
 
     | Network_Msg: forall evs sigma A B req index_B pc_B,
         Network evs sigma -> 
@@ -260,14 +264,17 @@ Inductive Network: capture -> global_state -> Prop :=
         Network evs sigma -> 
         List.In (publicly B' A (format_MAC_Msg B A req index_B pc_B)) evs ->
         fresh_nonce A evs n0 ->
-        Network ( publicly_ChallengeRequest A B n0 :: evs ) sigma
+        Network ( privately_nonce A A n0 :: publicly_ChallengeRequest A B n0 :: evs ) 
+            ( set_nonce sigma A A n0 )
         
     | Network_ChallengeReply: forall evs sigma A A' B n0 req index_B,
         Network evs sigma -> 
         List.In (publicly A' B (format_MAC_ChallengeRequest A B n0)) evs ->
         (* on sauvegarde n0 dans un privately *)
         fresh_index B evs index_B ->
-        Network ( publicly_ChallengeReply B A req n0 index_B 0 :: evs ) 
+        Network 
+            ( privately_index B B index_B :: 
+                publicly_ChallengeReply B A req n0 index_B 0 :: evs ) 
             ( update_PC_index sigma B B 0 index_B )
                         
     | Network_RespSlow: forall evs sigma A B B' n0 index_B pc_B req resp,
