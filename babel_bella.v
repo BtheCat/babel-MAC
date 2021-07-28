@@ -167,16 +167,6 @@ Proof.
         deuxième lemme : knows B evs_ex = Empty_set *)
 Admitted.
 
-Inductive parts (X: msg) (H: Ensemble msg): Prop :=
-    | parts_init: In msg H X -> parts X H
-    | parts_tuple Xs: parts (Tuple Xs) H -> List.In X Xs -> parts X H
-    | parts_mac: parts (MAC X) H -> parts X H.
-
-Inductive used (m: msg): capture -> Prop :=
-    | used_init A: parts m (init_state A) -> used m []
-    | used_now ev evs: parts m (Singleton msg ev.(payload)) -> used m (ev :: evs)
-    | used_later ev evs: used m evs -> used m (ev :: evs).
-
 Definition unique (ev: event) evs :=
     ~ List.In ev evs \/ (exists pre suff, evs = pre ++ ev :: suff 
                         /\ ~ List.In ev pre /\ ~ List.In ev suff). 
@@ -301,8 +291,8 @@ Admitted.
 Theorem can_Msg:
     forall sigma evs A B req, 
         Network sigma evs -> 
-        exists sigma1 evs' index pc, 
-            Network sigma1 evs' 
+        exists sigma' evs' index pc, 
+            Network sigma' evs' 
             /\ List.In (publicly_Msg B A req index pc) evs'
             /\ (exists pre, evs' = pre ++ evs).
 Proof.
@@ -336,10 +326,11 @@ Admitted.
 Theorem can_Challenge:
     forall sigma evs A B req index pc, Network sigma evs -> 
         List.In ( publicly_Msg B A req index pc ) evs ->
-        exists sigma1 evs' n0, 
-            Network sigma1 evs' 
+        exists sigma' evs' n0, 
+            Network sigma' evs' 
             /\ List.In (publicly_ChallengeRequest A B n0) evs'
             /\ (exists pre, evs' = pre ++ evs).
+
 Admitted.
 
 (* Théorèmes de spoofing *)
@@ -348,10 +339,10 @@ Theorem spoofing_RespFast:
     forall sigma evs A B req resp index pc,
         Network sigma evs ->
         List.In (publicly_RespFast A B req resp index pc) evs ->
-        exists sigma1 evs', 
-            List.In (publicly_RespFast A B req resp index pc) evs' 
-            /\ List.In (publicly Attacker A (format_MAC_Msg A B req index pc)) evs' 
-            /\ Network sigma1 evs'.
+        exists sigma' evs', 
+            Network sigma' evs'
+            /\ List.In (publicly_RespFast A B req resp index pc) evs' 
+            /\ List.In (publicly Attacker A (format_MAC_Msg A B req index pc)) evs' .
 Admitted.
 
 (* Théorèmes d'unicité des événements *)
