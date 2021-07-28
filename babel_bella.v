@@ -284,8 +284,10 @@ Inductive Network: global_state -> capture -> Prop :=
 (* Théorèmes montrant que les prédicats Network_Msg, Network_reset et Network_ChallengeRequest peuvent toujours se faire *)
 
 Lemma Msg_always_possible:
-    forall sigma evs B, Network sigma evs -> 
-        (exists index, saved_index sigma B B index) /\ (exists pc, saved_PC sigma B B pc).
+    forall sigma evs B, 
+        Network sigma evs -> 
+        (exists index, saved_index sigma B B index) 
+        /\ (exists pc, saved_PC sigma B B pc).
 Admitted.
 
 Theorem can_Msg:
@@ -319,19 +321,28 @@ Admitted.
 *)
 
 Lemma ChallengeRequest_always_possible:
-    forall sigma evs A B req index pc, Network sigma evs ->
-        List.In ( publicly_Msg B A req index pc ) evs -> (exists n0, fresh_nonce A evs n0).
+    forall sigma evs A B req index pc, 
+        Network sigma evs ->
+        List.In ( publicly_Msg B A req index pc ) evs -> 
+        exists n0, fresh_nonce A evs n0.
 Admitted.
 
 Theorem can_Challenge:
-    forall sigma evs A B req index pc, Network sigma evs -> 
+    forall sigma evs A B req index pc, 
+        Network sigma evs -> 
         List.In ( publicly_Msg B A req index pc ) evs ->
         exists sigma' evs' n0, 
             Network sigma' evs' 
             /\ List.In (publicly_ChallengeRequest A B n0) evs'
             /\ (exists pre, evs' = pre ++ evs).
-
-Admitted.
+Proof.
+    intros sigma evs A B req index pc. intros Hnetwork HIn.
+    pose proof (ChallengeRequest_always_possible sigma evs A B req index pc Hnetwork HIn) as [n0 Hn0].
+    eexists. eexists. exists n0. split.
+    - eapply Network_ChallengeRequest ; eauto.
+    - split ; try firstorder.
+        exists [privately_nonce A n0 ; publicly_ChallengeRequest A B n0]. auto.
+Qed.
 
 (* Théorèmes de spoofing *)
 
