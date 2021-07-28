@@ -108,8 +108,6 @@ Definition format_MAC src dest msg :=
 
 Definition format_MAC_Send src dest pkt index pc := 
     format_MAC src dest (format_Send pkt index pc).
-Definition format_MAC_Accept src dest pkt index pc :=
-    format_MAC src dest (format_Accept pkt index pc).
 Definition format_MAC_ChallengeRequest src dest n0 :=
     format_MAC src dest (format_ChallengeRequest n0).
 Definition format_MAC_ChallengeReply src dest n0 index pc :=
@@ -340,13 +338,49 @@ Proof.
         exists [privately_nonce A n0 ; publicly_ChallengeRequest A B n0]. auto.
 Qed.
 
+Lemma saved_index_dec:
+    forall sigma A B,
+        (exists index, saved_index sigma A B index) \/
+        lookup_index sigma A B = None.
+Admitted.
+
+Lemma saved_PC_dec:
+    forall sigma A B,
+        (exists pc, saved_PC sigma A B pc) \/
+        lookup_PC sigma A B = None.
+Admitted.
+
 Theorem liveness:
     forall sigma evs A B pkt,
         Network sigma evs ->
         exists sigma' evs' index pc,
-            Network sigma' (evs' ++ evs)
+            Network sigma' evs'
             /\ List.In (publicly_Send B A pkt index pc) evs' 
-            /\ List.In (privately_Accept A B pkt index pc) evs'.
+            /\ List.In (privately_Accept A B pkt index pc) evs'
+            /\ (exists pre, evs' = pre ++ evs).
+Proof.
+    intros sigma evs A B pkt. intro Hnetwork.
+    assert ( HsavedIndex : (exists index, saved_index sigma A B index) 
+        \/ lookup_index sigma A B = None ). apply saved_index_dec.
+    destruct HsavedIndex as [(index, HsavedIndex) | HnotIndex].
+    - assert ( HsavedPC : (exists pc, saved_PC sigma A B pc)
+            \/ lookup_PC sigma A B = None ). apply saved_PC_dec.
+        destruct HsavedPC as [(pc, HsavedPC) | HnotPC].
+        + assert ( HcanSend : exists sigma' evs' index' pc',
+                        Network sigma' evs' 
+                        /\ List.In (publicly_Send A B pkt index' pc') evs' 
+                        /\ exists pre, evs' = pre ++ evs ).
+    (* Pour démontrer ce théorème il y a 2 cas possibles :
+        cas 1 : les conditions sont réunies pour accepter une requête
+            alors pre = [ privately_Accept ... ; publicly_Send ... ]
+        cas 2 : au moins une des conditions n'est pas valide 
+            alors pre = [ privately_Accept ... ; publicly_Send ... ;
+                            privately_index ... ; publicly_ChallengeReply ... ;
+                            privately_nonce ... ; publicly_ChallengeRequest ... ]
+    Dans le cas 2, il faut montrer que la procédure de Challenge / Reply permet de réunir les conditions 
+        pour accepter la requête.
+    Ces deux cas sont les seuls à montrer car ChallengeRequest et Send peuvent toujours se faire :
+        il s'agit des theoremes can_ChallengeRequest et can_Send *)
 Admitted.
 
 (* Théorèmes de spoofing *)
