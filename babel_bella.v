@@ -224,8 +224,11 @@ Definition set_nonce (sigma: global_state) A B new_nonce :=
                     else (sigma A).(_nonce) B')
         else sigma A'.
 
-Definition init_global_state: global_state := 
-    fun _ => LS ( fun _ => None ) ( fun _ => None ) ( fun _ _ => false ).
+Definition init_global_state (seed: agent -> string): global_state := 
+    fun A => LS 
+        ( fun B => if eqb A B then Some 0 else None ) 
+        ( fun B => (if eqb A B then Some (seed A) else None) ) 
+        ( fun _ _ => false ).
 
 Definition saved_index A B index sigma := Some index = lookup_index sigma A B.
 Definition saved_PC A B pc sigma := Some pc = lookup_PC sigma A B.
@@ -236,7 +239,8 @@ Inductive Network: capture -> global_state -> Prop :=
         synth (analz (knows Attacker evs)) X ->
         Network ( publicly Attacker B X :: evs ) sigma
     
-    | Network_init: Network [] init_global_state
+    | Network_init: forall seed,
+        Network [] (init_global_state seed)
 
     | Network_reset: forall evs sigma B index_B,
         Network evs sigma -> 
