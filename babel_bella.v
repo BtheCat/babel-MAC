@@ -87,13 +87,11 @@ Record event := E { mode: visibility ; payload: msg }.
 Definition publicly A B msg := E (Publicly A B) msg.
 Definition privately A msg := E (Privately A) msg.
 
-Definition format_index B index := Tuple [Atom (inl (Agent B)) ; Atom (inr (Index index))].
-Definition format_nonce B nonce := Tuple [Atom (inl (Agent B)) ; Atom (inr (Nonce nonce))].
-Definition format_PC B pc := Tuple [Atom (inl (Agent B)) ; Atom (inl (PC pc))].
+Definition format_index index := Atom (inr (Index index)).
+Definition format_nonce nonce := Atom (inr (Nonce nonce)).
 
-Definition privately_index A B index := privately A (format_index B index).
-Definition privately_nonce A B nonce := privately A (format_nonce B nonce).
-Definition privately_PC A B pc := privately A (format_PC B pc).
+Definition privately_index A index := privately A (format_index index).
+Definition privately_nonce A nonce := privately A (format_nonce nonce).
 
 Definition format_Msg req index pc := Tuple [Atom (inl TagMsg) ; Atom (inl (Literal req)) ; 
     Atom (inr (Index index)) ; Atom (inl (PC pc))].
@@ -132,9 +130,9 @@ Definition publicly_RespSlow A B req resp index pc :=
 
 Definition capture := list event.
 
+Parameter index_seed: agent -> string.
 Inductive init_state: agent -> Ensemble msg :=
-    | init_state_PC: forall A B, init_state A (format_PC B 0)
-    | init_state_index: forall A s, init_state A (format_index A s).
+    | init_state_index: forall A s, s = index_seed A -> init_state A (format_index s).
 
 Inductive knows: agent -> capture -> Ensemble msg :=
     | knows_init A m: init_state A m -> knows A [] m 
@@ -198,18 +196,19 @@ Definition test_nonce (sigma: global_state) A B n := (sigma A).(_nonce) B n.
 Definition update_PC (sigma: global_state) A B new_pc :=
     fun A' => 
         if eqb A' A then 
-            LS (fun B' => 
-                if eqb B' B then Some new_pc 
-                else (sigma A).(_PC) B'
-            ) ( (sigma A).(_index) ) ( (sigma A).(_nonce) )
+            let update_new_PC B' := if eqb B' B then Some new_pc 
+                        else (sigma A).(_PC) B' 
+            in
+            LS update_new_PC (sigma A).(_index) (sigma A).(_nonce)
         else sigma A'.
 
 Definition update_index (sigma: global_state) A B new_index :=
     fun A' =>
         if eqb A' A then 
-            LS ( (sigma A).(_PC) ) (fun B' =>
-                    if eqb B' B then Some new_index 
-                    else (sigma A).(_index) B' ) ( (sigma A).(_nonce) )
+            let update_new_index B' := if eqb B' B then Some new_index 
+                        else (sigma A).(_index) B' 
+            in
+            LS (sigma A).(_PC) update_new_index (sigma A).(_nonce)
         else sigma A'.
 
 Definition update_PC_index (sigma: global_state) A B new_pc new_index :=
@@ -218,10 +217,10 @@ Definition update_PC_index (sigma: global_state) A B new_pc new_index :=
 Definition set_nonce (sigma: global_state) A B new_nonce :=
     fun A' =>
         if eqb A' A then 
-            LS ( (sigma A).(_PC) ) ( (sigma A).(_index) ) 
-                (fun B' =>
-                    if eqb B' B then (fun n => Nat.eqb n new_nonce)
-                    else (sigma A).(_nonce) B')
+            let set_new_nonce B' := if eqb B' B then (fun n => Nat.eqb n new_nonce)
+                        else (sigma A).(_nonce) B'
+            in
+            LS (sigma A).(_PC) (sigma A).(_index) set_new_nonce
         else sigma A'.
 
 Definition init_global_state (seed: agent -> string): global_state := 
@@ -230,158 +229,119 @@ Definition init_global_state (seed: agent -> string): global_state :=
         ( fun B => (if eqb A B then Some (seed A) else None) ) 
         ( fun _ _ => false ).
 
-Definition saved_index A B index sigma := Some index = lookup_index sigma A B.
-Definition saved_PC A B pc sigma := Some pc = lookup_PC sigma A B.
+Definition saved_index sigma A B index := Some index = lookup_index sigma A B.
+Definition saved_PC sigma A B pc := Some pc = lookup_PC sigma A B.
 
-Inductive Network: capture -> global_state -> Prop :=
-    | Network_Attack: forall evs sigma X B,
-        Network evs sigma ->
+Inductive Network: global_state -> capture -> Prop :=
+    | Network_Attack: forall sigma evs X B,
+        Network sigma evs ->
         synth (analz (knows Attacker evs)) X ->
-        Network ( publicly Attacker B X :: evs ) sigma
+        Network sigma ( publicly Attacker B X :: evs )
     
-    | Network_init: forall seed,
-        Network [] (init_global_state seed)
+    | Network_init: forall sigma,
+        sigma = init_global_state index_seed ->
+        Network sigma []
 
-    | Network_reset: forall evs sigma B index_B,
-        Network evs sigma -> 
+    | Network_reset: forall sigma evs B index_B sigma1 sigma2,
+        Network sigma evs -> 
         fresh_index B evs index_B ->
-        Network 
-            ( privately_index B B index_B :: evs )
-            ( update_PC_index sigma B B 0 index_B )
+        sigma1 = update_index sigma B B index_B ->
+        sigma2 = update_PC sigma1 B B 0 ->
+        Network sigma2 ( privately_index B index_B :: evs )
 
-    | Network_Msg: forall evs sigma A B req index_B pc_B,
-        Network evs sigma -> 
-        saved_index B B index_B sigma -> 
-        saved_PC B B pc_B sigma ->
-        Network ( publicly_Msg B A req index_B pc_B :: evs )
-            ( update_PC sigma A B pc_B )
+    | Network_Msg: forall sigma evs A B req index_B pc_B sigma1,
+        Network sigma evs -> 
+        saved_index sigma B B index_B -> 
+        saved_PC sigma B B pc_B ->
+        sigma1 = update_PC sigma B B (pc_B + 1) ->
+        Network sigma1 ( publicly_Msg B A req index_B pc_B :: evs )
     
-    | Network_RespFast: forall evs sigma A B B' index_B pc_B req resp pc,
-        Network evs sigma -> 
+    | Network_RespFast: forall sigma evs A B B' index_B pc_B req resp pc sigma1,
+        Network sigma evs -> 
         List.In (publicly B' A (format_MAC_Msg B A req index_B pc_B)) evs ->
-        saved_index A B index_B sigma ->
-        saved_PC A B pc sigma -> pc < pc_B -> 
-        Network ( publicly_RespFast A B req resp index_B pc_B :: evs )
-            ( update_PC sigma A B pc_B )
+        saved_index sigma A B index_B ->
+        saved_PC sigma A B pc -> pc < pc_B -> 
+        sigma1 = update_PC sigma A B pc_B ->
+        Network sigma1 ( publicly_RespFast A B req resp index_B pc_B :: evs )
         
-    | Network_ChallengeRequest: forall evs sigma A B B' index_B pc_B req n0,
-        Network evs sigma -> 
+    | Network_ChallengeRequest: forall sigma evs A B B' index_B pc_B req n0,
+        Network sigma evs -> 
         List.In (publicly B' A (format_MAC_Msg B A req index_B pc_B)) evs ->
         fresh_nonce A evs n0 ->
-        Network ( privately_nonce A A n0 :: publicly_ChallengeRequest A B n0 :: evs ) 
-            ( set_nonce sigma A A n0 )
+        Network sigma 
+            ( privately_nonce A n0 :: publicly_ChallengeRequest A B n0 :: evs ) 
         
-    | Network_ChallengeReply: forall evs sigma A A' B n0 req index_B,
-        Network evs sigma -> 
+    | Network_ChallengeReply: forall sigma evs A A' B n0 req index_B sigma1 sigma2 sigma3,
+        Network sigma evs -> 
         List.In (publicly A' B (format_MAC_ChallengeRequest A B n0)) evs ->
-        (* on sauvegarde n0 dans un privately *)
+        test_nonce sigma B A n0 = false ->
         fresh_index B evs index_B ->
-        Network 
-            ( privately_index B B index_B :: 
+        sigma1 = update_index sigma B B index_B ->
+        sigma2 = update_PC sigma1 B B 0 ->
+        sigma3 = set_nonce sigma2 B A n0 ->
+        Network sigma3
+            ( privately_index B index_B :: 
                 publicly_ChallengeReply B A req n0 index_B 0 :: evs ) 
-            ( update_PC_index sigma B B 0 index_B )
                         
-    | Network_RespSlow: forall evs sigma A B B' n0 index_B pc_B req resp,
-        Network evs sigma -> 
+    | Network_RespSlow: forall sigma evs A B B' n0 index_B pc_B req resp sigma1 sigma2,
+        Network sigma evs -> 
         List.In (publicly_ChallengeRequest A B n0) evs ->
         List.In (publicly B' A (format_MAC_ChallengeReply B A req n0 index_B pc_B)) evs ->
-        Network ( publicly_RespSlow A B req resp index_B pc_B :: evs )
-            ( update_PC_index sigma A B pc_B index_B ).
+        sigma1 = update_index sigma A B index_B ->
+        sigma2 = update_PC sigma1 A B pc_B ->
+        Network sigma2 ( publicly_RespSlow A B req resp index_B pc_B :: evs ).
 
 
 (* Théorèmes montrant que les prédicats Network_Msg, Network_reset et Network_ChallengeRequest peuvent toujours se faire *)
 
 Lemma Msg_always_possible:
-    forall evs sigma B, Network evs sigma -> (exists index, saved_index B B index evs) /\ (exists pc, saved_PC B B pc evs).
-Proof.
-    (*
-    intros evs B. intro Hnetwork.
-    induction Hnetwork.
-    - destruct IHHnetwork as (IHHN_index & IHHN_pc). split.
-        * destruct IHHN_index as (index, IHHN_index). exists index.
-            unfold saved_index. apply saved_skip. unfold saved_index in IHHN_index. assumption.
-        * destruct IHHN_pc as (pc, IHHN_pc). exists pc.
-            unfold saved_index. apply saved_skip. unfold saved_index in IHHN_pc. assumption.
-    - split.
-        * unfold saved_index. admit.
-        * unfold saved_index. admit.
-    - split.
-        * exists index_B. unfold saved_index. admit.
-        * admit.
-    - destruct IHHnetwork as (IHHN_index & IHHN_pc). split.
-        * destruct IHHN_index as (index, IHHN_index). exists index.
-            unfold saved_index. unfold privately_PC. apply saved_later.
-            + intros _ HP. destruct HP as (index', HP). discriminate.
-            + unfold publicly_Msg. apply saved_skip. unfold saved_index in IHHN_index. assumption.
-        * destruct IHHN_pc as (pc, IHHN_pc). exists pc. 
-            unfold saved_PC. apply saved_later.
-                + admit.
-                + apply saved_skip. unfold saved_PC in H0. assumption.
-    - destruct IHHnetwork as (IHHN_index & IHHN_pc). split.
-        * destruct IHHN_index as (index, IHHN_index). exists index.
-            unfold saved_index. apply saved_later.
-            + intros _ HP. destruct HP as (inde', HP). discriminate.   
-            +   
-    *)
+    forall sigma evs B, Network sigma evs -> 
+        (exists index, saved_index B B index sigma) /\ (exists pc, saved_PC B B pc sigma).
 Admitted.
 
 Theorem can_Msg:
-    forall evs A B req, Network evs -> 
-        exists evs' index pc, Network evs' /\ List.In (publicly_Msg B A req index pc) evs'
+    forall sigma evs A B req, Network sigma evs -> 
+        exists sigma1 evs' index pc, Network sigma1 evs' /\ List.In (publicly_Msg B A req index pc) evs'
             /\ (exists pre, evs' = pre ++ evs).
 Proof.
-    intros evs A B req. intro Hnetwork.
-    pose proof (Msg_always_possible evs B Hnetwork) as ([index Hindex] & [pc Hpc]).
-    eexists. exists index. exists pc. split.
+    intros sigma evs A B req. intro Hnetwork.
+    pose proof (Msg_always_possible sigma evs B Hnetwork) as ([index Hindex] & [pc Hpc]).
+    eexists. eexists. exists index. exists pc. split.
     - eapply Network_Msg ; eauto.
     - split ; try firstorder.
-        exists [privately_PC B B (pc + 1) ; publicly_Msg B A req index pc]. auto.
+        exists [publicly_Msg B A req index pc]. auto.
 Qed.
 
 Lemma reset_always_possible:
-    forall evs B, Network evs -> (exists index, fresh_index B evs index).
+    forall sigma evs B, Network sigma evs -> (exists index, fresh_index B evs index).
 Admitted.
 
 Theorem can_reset:
-    forall evs B, Network evs -> 
-        exists evs' index, Network evs' /\ List.In (privately_index B B index) evs' 
-                /\ List.In (privately_PC B B 0) evs' /\ (exists pre, evs' = pre ++ evs).
-Proof.
-    intros evs B. intro Hnetwork.
-    pose proof (reset_always_possible evs B Hnetwork) as [index Hindex].
-    eexists. exists index. split.
-    - eapply Network_reset ; eauto.
-    - split ; try firstorder.
-        exists [privately_index B B index ; privately_PC B B 0]. auto.
-Qed.
+    forall sigma evs B, Network sigma evs -> 
+        exists sigma1 evs' index, Network sigma1 evs' /\ List.In (privately_index B B index) evs' 
+                /\ (exists pre, evs' = pre ++ evs).
+Admitted.
 
 Lemma ChallengeRequest_always_possible:
-    forall evs A B req index pc, Network evs ->
+    forall sigma evs A B req index pc, Network sigma evs ->
         List.In ( publicly_Msg B A req index pc ) evs -> (exists n0, fresh_nonce A evs n0).
 Admitted.
 
 Theorem can_Challenge:
-    forall evs A B req index pc, Network evs -> List.In ( publicly_Msg B A req index pc ) evs ->
-        exists evs' n0, Network evs' /\ List.In (publicly_ChallengeRequest A B n0) evs'
+    forall sigma evs A B req index pc, Network sigma evs -> List.In ( publicly_Msg B A req index pc ) evs ->
+        exists sigma1 evs' n0, Network sigma1 evs' /\ List.In (publicly_ChallengeRequest A B n0) evs'
             /\ (exists pre, evs' = pre ++ evs).
-Proof.
-    intros evs A B req index pc. intros Hnetwork HIn.
-    pose proof (ChallengeRequest_always_possible evs A B req index pc Hnetwork HIn) as [n0 Hn0].
-    eexists. exists n0. split.
-    - eapply Network_ChallengeRequest ; eauto.
-    - split ; try firstorder.
-        exists [publicly_ChallengeRequest A B n0]. auto. 
-Qed.
+Admitted.
 
 (* Théorèmes de spoofing *)
 
 Theorem spoofing_RespFast:
-    forall evs A B req resp index pc,
-        Network evs ->
+    forall sigma evs A B req resp index pc,
+        Network sigma evs ->
         List.In (publicly_RespFast A B req resp index pc) evs ->
-        exists evs', List.In (publicly_RespFast A B req resp index pc) evs' 
+        exists sigma1 evs', List.In (publicly_RespFast A B req resp index pc) evs' 
             /\ List.In (publicly Attacker A (format_MAC_Msg A B req index pc)) evs' 
-            /\ Network evs'.
+            /\ Network sigma1 evs'.
 Admitted.
 
 (* Théorèmes d'unicité des messages *)
@@ -396,50 +356,50 @@ Proof.
     - rewrite <- app_comm_cons. apply knows_later. assumption.
 Qed.
 
-Theorem replay: forall evs A B X, 
-    Network evs -> 
+Theorem replay: forall sigma evs A B X, 
+    Network sigma evs -> 
     List.In (publicly A B X) evs ->
-    forall C, Network ( publicly Attacker C X :: evs ).
+    forall C, Network sigma ( publicly Attacker C X :: evs ).
 Proof.
-    intros evs A B X. intros Hnetwork HIn. intro C.
+    intros sigma evs A B X. intros Hnetwork HIn. intro C.
     apply Network_Attack ; try auto.
     apply synth_init. unfold In. apply analz_init. unfold In.
     eapply compatibiliy_knows_in. eauto.
 Qed.
 
 Theorem Msg_unicity:
-    forall evs A B index pc req, 
-        Network evs ->
+    forall sigma evs A B index pc req, 
+        Network sigma evs ->
         unique ( format_MAC_Msg A B req index pc ) evs.
 Admitted.
 
 Theorem RespFast_unicity:
-    forall evs index pc A A' B B' req req' resp resp',
-        Network evs ->
+    forall sigma evs index pc A A' B B' req req' resp resp',
+        Network sigma evs ->
         List.In ( publicly_RespFast A B req resp index pc ) evs ->
         List.In ( publicly_RespFast A' B' req' resp' index pc ) evs ->
         A = A' /\ B = B' /\ req = req' /\ resp = resp'.
 Admitted.
 
 Theorem ChallengeRequest_unicity:
-    forall evs A n0 B B',
-        Network evs ->
+    forall sigma evs A n0 B B',
+        Network sigma evs ->
         List.In ( publicly_ChallengeRequest A B n0 ) evs ->
         List.In ( publicly_ChallengeRequest A B' n0 ) evs ->
         B = B'.
 Admitted.
 
 Theorem ChallengeReply_unicity:
-    forall evs n0 A A' B B' index index' pc pc' req req',
-        Network evs ->
+    forall sigma evs n0 A A' B B' index index' pc pc' req req',
+        Network sigma evs ->
         List.In ( publicly_ChallengeReply A B n0 req index pc ) evs ->
         List.In ( publicly_ChallengeReply A' B' n0 req' index' pc' ) evs ->
         A = A' /\ B = B' /\ req = req' /\ index = index' /\ pc = pc'.
 Admitted.
 
 Theorem RespSlow_unicity:
-    forall evs index pc A A' B B' req req' resp resp',
-        Network evs ->
+    forall sigma evs index pc A A' B B' req req' resp resp',
+        Network sigma evs ->
         List.In ( publicly_RespSlow A B req resp index pc ) evs ->
         List.In ( publicly_RespSlow A' B' req' resp' index pc ) evs ->
         A = A' /\ B = B' /\ req = req' /\ resp = resp'.
