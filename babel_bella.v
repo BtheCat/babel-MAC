@@ -177,10 +177,9 @@ Inductive used (m: msg): capture -> Prop :=
     | used_now ev evs: parts m (Singleton msg ev.(payload)) -> used m (ev :: evs)
     | used_later ev evs: used m evs -> used m (ev :: evs).
 
-Definition unique m evs :=
-    ~ used m evs \/ (exists pre suff ev, evs = pre ++ ev :: suff 
-                        /\ ~ used m pre /\ ~ used m suff 
-                        /\ m = ev.(payload)). 
+Definition unique ev evs :=
+    ~ used ev evs \/ (exists pre suff, evs = pre ++ ev :: suff 
+                        /\ ~ used ev pre /\ ~ used ev suff. 
 
 Record local_state := LS {
         _PC: agent -> option nat ;
@@ -300,8 +299,11 @@ Lemma Msg_always_possible:
 Admitted.
 
 Theorem can_Msg:
-    forall sigma evs A B req, Network sigma evs -> 
-        exists sigma1 evs' index pc, Network sigma1 evs' /\ List.In (publicly_Msg B A req index pc) evs'
+    forall sigma evs A B req, 
+        Network sigma evs -> 
+        exists sigma1 evs' index pc, 
+            Network sigma1 evs' 
+            /\ List.In (publicly_Msg B A req index pc) evs'
             /\ (exists pre, evs' = pre ++ evs).
 Proof.
     intros sigma evs A B req. intro Hnetwork.
@@ -316,11 +318,15 @@ Lemma reset_always_possible:
     forall sigma evs B, Network sigma evs -> (exists index, fresh_index B evs index).
 Admitted.
 
+(* Network_reset est peut être redondant, on commente donc le théorème
 Theorem can_reset:
     forall sigma evs B, Network sigma evs -> 
-        exists sigma1 evs' index, Network sigma1 evs' /\ List.In (privately_index B B index) evs' 
-                /\ (exists pre, evs' = pre ++ evs).
+        exists sigma1 evs' index, 
+            Network sigma1 evs' 
+            /\ List.In (privately_index B index) evs' 
+            /\ (exists pre, evs' = pre ++ evs).
 Admitted.
+*)
 
 Lemma ChallengeRequest_always_possible:
     forall sigma evs A B req index pc, Network sigma evs ->
@@ -328,8 +334,11 @@ Lemma ChallengeRequest_always_possible:
 Admitted.
 
 Theorem can_Challenge:
-    forall sigma evs A B req index pc, Network sigma evs -> List.In ( publicly_Msg B A req index pc ) evs ->
-        exists sigma1 evs' n0, Network sigma1 evs' /\ List.In (publicly_ChallengeRequest A B n0) evs'
+    forall sigma evs A B req index pc, Network sigma evs -> 
+        List.In ( publicly_Msg B A req index pc ) evs ->
+        exists sigma1 evs' n0, 
+            Network sigma1 evs' 
+            /\ List.In (publicly_ChallengeRequest A B n0) evs'
             /\ (exists pre, evs' = pre ++ evs).
 Admitted.
 
@@ -339,7 +348,8 @@ Theorem spoofing_RespFast:
     forall sigma evs A B req resp index pc,
         Network sigma evs ->
         List.In (publicly_RespFast A B req resp index pc) evs ->
-        exists sigma1 evs', List.In (publicly_RespFast A B req resp index pc) evs' 
+        exists sigma1 evs', 
+            List.In (publicly_RespFast A B req resp index pc) evs' 
             /\ List.In (publicly Attacker A (format_MAC_Msg A B req index pc)) evs' 
             /\ Network sigma1 evs'.
 Admitted.
@@ -367,18 +377,10 @@ Proof.
     eapply compatibiliy_knows_in. eauto.
 Qed.
 
-Theorem Msg_unicity:
-    forall sigma evs A B index pc req, 
-        Network sigma evs ->
-        unique ( format_MAC_Msg A B req index pc ) evs.
-Admitted.
-
 Theorem RespFast_unicity:
     forall sigma evs index pc A A' B B' req req' resp resp',
         Network sigma evs ->
-        List.In ( publicly_RespFast A B req resp index pc ) evs ->
-        List.In ( publicly_RespFast A' B' req' resp' index pc ) evs ->
-        A = A' /\ B = B' /\ req = req' /\ resp = resp'.
+        unique ( publicly_RespFast A B req resp index pc ) evs.
 Admitted.
 
 Theorem ChallengeRequest_unicity:
