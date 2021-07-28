@@ -167,19 +167,6 @@ Proof.
         deuxième lemme : knows B evs_ex = Empty_set *)
 Admitted.
 
-Inductive saved (A: agent) (P Q: msg -> Prop): capture -> Prop :=
-    | saved_init m: init_state A m -> Q m -> saved A P Q []
-    | saved_now m evs: P m -> Q m -> saved A P Q ( (privately A m) :: evs )
-    | saved_later A' m evs: (A = A' -> not (P m)) -> saved A P Q evs -> saved A P Q ( (privately A' m) :: evs )
-    | saved_skip A' B m evs: saved A P Q evs -> saved A P Q ( (publicly A' B m) :: evs ).
-
-Definition saved_PC A B pc evs :=
-    saved A (fun m => exists pc', m = format_PC B pc') (fun m => m = format_PC B pc) evs.
-
-Definition saved_index A B index evs :=
-    saved A (fun m => exists index', m = format_index B index') 
-        (fun m => m = format_index B index) evs.
-
 Inductive parts (X: msg) (H: Ensemble msg): Prop :=
     | parts_init: In msg H X -> parts X H
     | parts_tuple Xs: parts (Tuple Xs) H -> List.In X Xs -> parts X H
@@ -238,8 +225,8 @@ Definition set_nonce (sigma: global_state) A B new_nonce :=
 Definition init_global_state: global_state := 
     fun _ => LS ( fun _ => None ) ( fun _ => None ) ( fun _ _ => false ).
 
-Definition saved_index' A B index sigma := Some index = lookup_index sigma A B.
-Definition saved_PC' A B pc sigma := Some pc = lookup_PC sigma A B.
+Definition saved_index A B index sigma := Some index = lookup_index sigma A B.
+Definition saved_PC A B pc sigma := Some pc = lookup_PC sigma A B.
 
 Inductive Network: capture -> global_state -> Prop :=
     | Network_Attack: forall evs sigma X B,
@@ -256,16 +243,16 @@ Inductive Network: capture -> global_state -> Prop :=
 
     | Network_Msg: forall evs sigma A B req index_B pc_B,
         Network evs sigma -> 
-        saved_index' B B index_B sigma -> 
-        saved_PC' B B pc_B sigma ->
+        saved_index B B index_B sigma -> 
+        saved_PC B B pc_B sigma ->
         Network ( publicly_Msg B A req index_B pc_B :: evs )
             ( update_PC sigma A B pc_B )
     
     | Network_RespFast: forall evs sigma A B B' index_B pc_B req resp pc,
         Network evs sigma -> 
         List.In (publicly B' A (format_MAC_Msg B A req index_B pc_B)) evs ->
-        saved_index' A B index_B sigma ->
-        saved_PC' A B pc sigma -> pc < pc_B -> 
+        saved_index A B index_B sigma ->
+        saved_PC A B pc sigma -> pc < pc_B -> 
         Network ( publicly_RespFast A B req resp index_B pc_B :: evs )
             ( update_PC sigma A B pc_B )
         
@@ -294,7 +281,7 @@ Inductive Network: capture -> global_state -> Prop :=
 (* Théorèmes montrant que les prédicats Network_Msg, Network_reset et Network_ChallengeRequest peuvent toujours se faire *)
 
 Lemma Msg_always_possible:
-    forall evs B, Network evs -> (exists index, saved_index B B index evs) /\ (exists pc, saved_PC B B pc evs).
+    forall evs sigma B, Network evs sigma -> (exists index, saved_index B B index evs) /\ (exists pc, saved_PC B B pc evs).
 Proof.
     (*
     intros evs B. intro Hnetwork.
