@@ -25,8 +25,8 @@ Variant public :=
     | Literal : bytes -> public 
     | Agent : agent -> public
     | PC : nat -> public 
-    | TagMsg : public
-    | TagRespFast : public 
+    | TagSend : public
+    | TagAccept : public 
     | TagChallengeRequest : public 
     | TagChallengeReply : public.
 
@@ -92,10 +92,10 @@ Definition format_nonce nonce := Atom (inr (Nonce nonce)).
 Definition privately_index A index := privately A (format_index index).
 Definition privately_nonce A nonce := privately A (format_nonce nonce).
 
-Definition format_Msg req index pc := Tuple [Atom (inl TagMsg) ; Atom (inl (Literal req)) ; 
+Definition format_Send pkt index pc := Tuple [Atom (inl TagSend) ; Atom (inl (Literal pkt)) ; 
     Atom (inr (Index index)) ; Atom (inl (PC pc))].
-Definition format_RespFast req resp index pc := Tuple [Atom (inl TagRespFast) ; Atom (inl (Literal req)) ; 
-    Atom (inl (Literal resp)) ; Atom (inr (Index index)) ; Atom (inl (PC pc))].
+Definition format_Accept pkt index pc := Tuple [Atom (inl TagAccept) ; Atom (inl (Literal pkt)) ; 
+    Atom (inr (Index index)) ; Atom (inl (PC pc))].
 Definition format_ChallengeRequest n0 := Tuple [Atom (inl TagChallengeRequest) ; Atom (inr (Nonce n0))].
 Definition format_ChallengeReply n0 index pc := Tuple [Atom (inl TagChallengeReply) ;
     Atom (inr (Nonce n0)) ; Atom (inr (Index index)) ; Atom (inl (PC pc))].
@@ -103,19 +103,19 @@ Definition format_ChallengeReply n0 index pc := Tuple [Atom (inl TagChallengeRep
 Definition format_MAC src dest msg :=
     Tuple [ msg ; MAC ( Tuple [ Atom (inl (Agent src)) ; Atom (inl (Agent dest)) ; msg ] ) ].
 
-Definition format_MAC_Msg src dest req index pc := 
-    format_MAC src dest (format_Msg req index pc).
-Definition format_MAC_RespFast src dest req resp index pc :=
-    format_MAC src dest (format_RespFast req resp index pc).
+Definition format_MAC_Send src dest pkt index pc := 
+    format_MAC src dest (format_Send pkt index pc).
+Definition format_MAC_Accept src dest pkt index pc :=
+    format_MAC src dest (format_Accept pkt index pc).
 Definition format_MAC_ChallengeRequest src dest n0 :=
     format_MAC src dest (format_ChallengeRequest n0).
 Definition format_MAC_ChallengeReply src dest n0 index pc :=
     format_MAC src dest (format_ChallengeReply n0 index pc).
 
-Definition publicly_Msg A B req index pc := 
-    publicly A B (format_MAC_Msg A B req index pc).
-Definition publicly_RespFast A B req resp index pc := 
-    publicly A B (format_MAC_RespFast A B req resp index pc).
+Definition publicly_Send A B pkt index pc := 
+    publicly A B (format_MAC_Send A B pkt index pc).
+Definition privately_Accept A B pkt index pc := 
+    publicly A B (format_MAC_Accept A B pkt index pc).
 Definition publicly_ChallengeRequest A B n0 := 
     publicly A B (format_MAC_ChallengeRequest A B n0).
 Definition publicly_ChallengeReply A B n0 index pc := 
@@ -231,20 +231,20 @@ Inductive Network: global_state -> capture -> Prop :=
         sigma2 = update_PC sigma1 B B 0 ->
         Network sigma2 ( privately_index B index_B :: evs )
 
-    | Network_Msg: forall sigma evs A B req index_B pc_B sigma1,
+    | Network_Send: forall sigma evs A B pkt index_B pc_B sigma1,
         Network sigma evs -> 
         saved_index sigma B B index_B -> 
         saved_PC sigma B B pc_B ->
         sigma1 = update_PC sigma B B (pc_B + 1) ->
-        Network sigma1 ( publicly_Msg B A req index_B pc_B :: evs )
+        Network sigma1 ( publicly_Send B A pkt index_B pc_B :: evs )
     
-    | Network_RespFast: forall sigma evs A B B' index_B pc_B req resp pc sigma1,
+    | Network_Accept: forall sigma evs A B B' index_B pc_B pkt pc sigma1,
         Network sigma evs -> 
-        List.In (publicly B' A (format_MAC_Msg B A req index_B pc_B)) evs ->
+        List.In (publicly B' A (format_MAC_Send B A pkt index_B pc_B)) evs ->
         saved_index sigma A B index_B ->
         saved_PC sigma A B pc -> pc < pc_B -> 
         sigma1 = update_PC sigma A B pc_B ->
-        Network sigma1 ( publicly_RespFast A B req resp index_B pc_B :: evs )
+        Network sigma1 ( privately_Accept A B pkt index_B pc_B :: evs )
         
     | Network_ChallengeRequest: forall sigma evs A B n0,
         Network sigma evs -> 
@@ -265,9 +265,9 @@ Inductive Network: global_state -> capture -> Prop :=
                 publicly_ChallengeReply B A n0 index_B 0 :: evs ).
 
 
-(* Théorèmes montrant que les prédicats Network_Msg, Network_reset et Network_ChallengeRequest peuvent toujours se faire *)
+(* Théorèmes montrant que les prédicats Network_Send, Network_reset et Network_ChallengeRequest peuvent toujours se faire *)
 
-Lemma Msg_always_possible:
+Lemma Send_always_possible:
     forall sigma evs B, 
         Network sigma evs -> 
         (exists index, saved_index sigma B B index) 
@@ -287,20 +287,20 @@ Proof.
     -  
 Admitted.
 
-Theorem can_Msg:
-    forall sigma evs A B req, 
+Theorem can_Send:
+    forall sigma evs A B pkt, 
         Network sigma evs -> 
         exists sigma' evs' index pc, 
             Network sigma' evs' 
-            /\ List.In (publicly_Msg B A req index pc) evs'
+            /\ List.In (publicly_Send B A pkt index pc) evs'
             /\ (exists pre, evs' = pre ++ evs).
 Proof.
-    intros sigma evs A B req. intro Hnetwork.
-    pose proof (Msg_always_possible sigma evs B Hnetwork) as ([index Hindex] & [pc Hpc]).
+    intros sigma evs A B pkt. intro Hnetwork.
+    pose proof (Send_always_possible sigma evs B Hnetwork) as ([index Hindex] & [pc Hpc]).
     eexists. eexists. exists index. exists pc. split.
-    - eapply Network_Msg ; eauto.
+    - eapply Network_Send ; eauto.
     - split ; try firstorder.
-        exists [publicly_Msg B A req index pc]. auto.
+        exists [publicly_Send B A pkt index pc]. auto.
 Qed.
 
 (* Network_reset est peut être redondant, on commente donc le théorème et le lemme associé
@@ -339,6 +339,15 @@ Proof.
         exists [privately_nonce A n0 ; publicly_ChallengeRequest A B n0]. auto.
 Qed.
 
+Theorem liveness:
+    forall sigma evs A B pkt,
+        Network sigma evs ->
+        exists sigma' evs' index pc,
+            Network sigma' (evs' ++ evs)
+            /\ List.In (publicly_Send B A pkt index pc) evs' 
+            /\ List.In (privately_Accept A B pkt index pc) evs'.
+Admitted.
+
 (* Théorèmes de spoofing *)
 
 Lemma insert_attack:
@@ -348,35 +357,35 @@ Lemma insert_attack:
         List.In (publicly Attacker B X) evs.
 Admitted.
 
-Lemma RespFast_Inversion:
-    forall sigma evs A B req resp index pc,
+Lemma Accept_Inversion:
+    forall sigma evs A B pkt index pc,
         Network sigma evs ->
-        List.In (publicly_RespFast A B req resp index pc) evs ->
+        List.In (privately_Accept A B pkt index pc) evs ->
         exists pc',
-            List.In (publicly_Msg B A req index pc) evs 
+            List.In (publicly_Send B A pkt index pc) evs 
             /\ saved_index sigma A B index 
             /\ saved_PC sigma A B pc' /\ pc' < pc.
 Admitted.
 
-Theorem spoofing_RespFast:
-    forall sigma evs A B req resp index pc,
+Theorem spoofing_Accept:
+    forall sigma evs A B pkt index pc,
         Network sigma evs ->
-        List.In (publicly_RespFast A B req resp index pc) evs ->
+        List.In (privately_Accept A B pkt index pc) evs ->
         exists sigma' evs', 
             Network sigma' evs'
-            /\ List.In (publicly_RespFast A B req resp index pc) evs' 
-            /\ List.In (publicly Attacker A (format_MAC_Msg B A req index pc)) evs'.
+            /\ List.In (privately_Accept A B pkt index pc) evs' 
+            /\ List.In (publicly Attacker A (format_MAC_Send B A pkt index pc)) evs'.
 Proof.
-    intros sigma evs A B req resp index pc. intros Hnetwork HIn.
+    intros sigma evs A B pkt index pc. intros Hnetwork HIn.
     assert (exists pc', 
-                List.In ( publicly_Msg B A req index pc ) evs
+                List.In ( publicly_Send B A pkt index pc ) evs
                 /\ saved_index sigma A B index 
                 /\ saved_PC sigma A B pc' /\ pc' < pc ) 
             as 
-            [pc' (HinMsg & (HsavedIndex & (HsavedPC & HorderPC)))]. 
-    + eapply RespFast_Inversion ; eauto.
+            [pc' (HinSend & (HsavedIndex & (HsavedPC & HorderPC)))]. 
+    + eapply Accept_Inversion ; eauto.
     + eexists. eexists. split.
-        - eapply Network_RespFast ; eauto.
+        - eapply Network_Accept ; eauto.
         - split. 
             * eapply in_eq. 
             * apply in_cons. eapply insert_attack ; eauto.
@@ -405,26 +414,26 @@ Proof.
     eapply compatibiliy_knows_in. eauto.
 Qed.
 
-Theorem RespFast_unicity:
-    forall sigma evs index pc A B req resp,
+Theorem Accept_unicity:
+    forall sigma evs index pc A B pkt,
         Network sigma evs ->
-        unique ( publicly_RespFast A B req resp index pc ) evs.
+        unique ( privately_Accept A B pkt index pc ) evs.
 Admitted.
 
 (* Théorèmes d'authenticité *)
 
-Theorem Msg_authenticity:
-    forall sigma evs A A' B B' req index pc,
+Theorem Send_authenticity:
+    forall sigma evs A A' B B' pkt index pc,
         Network sigma evs ->
-        List.In (publicly A' B' (format_MAC_Msg A B req index pc)) evs ->
-        List.In (publicly_Msg A B req index pc) evs.
+        List.In (publicly A' B' (format_MAC_Send A B pkt index pc)) evs ->
+        List.In (publicly_Send A B pkt index pc) evs.
 Admitted.
 
-Theorem RespFast_authenticity:
-    forall sigma evs A A' B B' req resp index pc,
+Theorem Accept_authenticity:
+    forall sigma evs A A' B B' pkt index pc,
         Network sigma evs ->
-        List.In (publicly A' B' (format_MAC_RespFast A B req resp index pc)) evs ->
-        List.In (publicly_RespFast A B req resp index pc) evs.
+        List.In (publicly A' B' (format_MAC_Accept A B pkt index pc)) evs ->
+        List.In (privately_Accept A B pkt index pc) evs.
 Admitted.
 
 Theorem ChallengeRequest_authenticity:
