@@ -177,9 +177,9 @@ Inductive used (m: msg): capture -> Prop :=
     | used_now ev evs: parts m (Singleton msg ev.(payload)) -> used m (ev :: evs)
     | used_later ev evs: used m evs -> used m (ev :: evs).
 
-Definition unique ev evs :=
-    ~ used ev evs \/ (exists pre suff, evs = pre ++ ev :: suff 
-                        /\ ~ used ev pre /\ ~ used ev suff. 
+Definition unique (ev: event) evs :=
+    ~ List.In ev evs \/ (exists pre suff, evs = pre ++ ev :: suff 
+                        /\ ~ List.In ev pre /\ ~ List.In ev suff). 
 
 Record local_state := LS {
         _PC: agent -> option nat ;
