@@ -596,4 +596,22 @@ Theorem ChallengeReply_authenticity:
         Network sigma evs ->
         List.In (publicly A' B' (format_MAC_ChallengeReply A B n0 index pc)) evs ->
         List.In (publicly_ChallengeReply A B n0 index pc) evs.
+Proof.
+    intros sigma evs A A' B B' n0 index pc. intros Hnetwork HIn.
+    induction Hnetwork ; try easy.
+    - admit.
+    - apply in_cons. apply IHHnetwork. apply in_inv in HIn ; easy.
+    - apply in_cons. apply IHHnetwork. apply in_inv in HIn ; easy.
+    - apply in_cons. apply IHHnetwork. apply in_inv in HIn ; easy.
+    - apply in_cons. apply in_cons. apply IHHnetwork. apply in_inv in HIn ; try easy.
+        apply in_inv in HIn ; easy.
+    - apply in_cons. assert ( Hdistinct : (n0 = n1) \/ (n0 <> n1) ). admit.
+        destruct Hdistinct as [HeqNonce | HdistinctNonce].
+        * rewrite <- HeqNonce. assert ( HeqChallReply : publicly_ChallengeReply A B n0 index pc =
+                                                        publicly_ChallengeReply B0 A0 n0 index_B 0 ). admit.
+            rewrite <- HeqChallReply. apply in_eq.
+        * assert ( HdistinctChallRep : publicly_ChallengeReply A B n0 index pc <>
+                                        publicly_ChallengeReply B0 A0 n1 index_B 0 ). admit.
+            apply in_cons. apply IHHnetwork. apply in_inv in HIn ; try easy.
+            apply in_inv in HIn ; try easy. admit.
 Admitted.
