@@ -449,10 +449,74 @@ Proof.
     eapply compatibiliy_knows_in. eauto.
 Qed.
 
+Lemma distinct_index_PC_dec: 
+    forall (index index': string) (pc pc': nat),
+        (index = index' /\ pc = pc') \/ (index <> index' \/ pc <> pc').
+Admitted.
+
 Theorem Accept_unicity:
     forall sigma evs index pc A B pkt,
         Network sigma evs ->
         unique ( privately_Accept A B pkt index pc ) evs.
+Proof.
+    intros sigma evs index pc A B pkt. intro Hnetwork.
+    unfold unique. induction Hnetwork.
+    - destruct IHHnetwork as [HnotIn | [pre [suff (Hevs & (HnotInPre & HnotInSuff))]]].
+        * left. apply not_in_cons. split ; easy.
+        * right. exists (publicly Attacker B0 X :: pre). exists suff. split.
+            + rewrite <- app_comm_cons. apply f_equal. assumption.
+            + split ; try easy. apply not_in_cons. split ; easy.
+    - auto.
+    - destruct IHHnetwork as [HnotIn | [pre [suff (Hevs & (HnotInPre & HnotInSuff))]]].
+        * left. apply not_in_cons. split ; easy.
+        * right. exists (privately_index B0 index_B :: pre). exists suff. split.
+            + rewrite <- app_comm_cons. apply f_equal. assumption.
+            + split ; try easy. apply not_in_cons. split ; easy.
+    - destruct IHHnetwork as [HnotIn | [pre [suff (Hevs & (HnotInPre & HnotInSuff))]]].
+        * left. apply not_in_cons. split ; easy.
+        * right. exists (publicly_Send B0 A0 pkt0 index_B pc_B :: pre). exists suff. split.
+            + rewrite <- app_comm_cons. apply f_equal. assumption.
+            + split ; try easy. apply not_in_cons. split ; easy.
+    - assert ( Hdistinct : (index = index_B /\ pc = pc_B) \/ (index <> index_B \/ pc <> pc_B) ).
+        apply distinct_index_PC_dec. destruct Hdistinct as [(HindexEq & HpcEq) | Hdistinct].
+        * assert ( HeqAccept : privately_Accept A0 B0 pkt0 index_B pc_B = 
+                                privately_Accept A B pkt index_B pc_B). admit.
+            destruct IHHnetwork as [HnotIn | [pre [suff (Hin & HnotInPre & HnotInSuff)]]].
+            + right. exists []. exists evs. simpl. split.
+                ++ f_equal. subst. assumption.
+                ++ split ; try easy.
+            + right. admit. 
+                (* Ici, on a un problème dans le but : on doit montrer
+                    exists pre0 suff0 : list event,
+                        privately_Accept A0 B0 pkt0 index_B pc_B :: evs =
+                        pre0 ++ privately_Accept A B pkt index pc :: suff0 /\
+                        ~ List.In (privately_Accept A B pkt index pc) pre0 /\
+                        ~ List.In (privately_Accept A B pkt index pc) suff0
+                mais cela n'est pas possible car on a aussi 
+                    privately_Accept A0 B0 pkt0 index_B pc_B = privately_Accept A B pkt index pc *)
+        * assert ( HdistinctAccept : privately_Accept A B pkt index pc <> 
+                                    privately_Accept A0 B0 pkt0 index_B pc_B ). admit.
+            destruct IHHnetwork as [HnotIn | [pre [suff (Hin & HnotInPre & HnotInSuff)]]].            
+            + left. apply not_in_cons. split ; assumption.
+            + right. exists (privately_Accept A0 B0 pkt0 index_B pc_B :: pre). exists suff. split.
+                ++ rewrite <- app_comm_cons. apply f_equal. assumption.
+                ++ split ; try easy. apply not_in_cons. split ; assumption.
+    - destruct IHHnetwork as [HnotIn | [pre [suff (Hevs & (HnotInPre & HnotInSuff))]]].
+        * left. apply not_in_cons. split ; try easy.
+            apply not_in_cons. split ; easy.
+        * right. exists (privately_nonce A0 n0 :: publicly_ChallengeRequest A0 B0 n0 :: pre). 
+            exists suff. split.
+            + rewrite <- app_comm_cons. rewrite <- app_comm_cons. apply f_equal. apply f_equal. assumption.
+            + split ; try easy. apply not_in_cons. split ; try easy.
+                apply not_in_cons. split ; easy.
+    - destruct IHHnetwork as [HnotIn | [pre [suff (Hevs & (HnotInPre & HnotInSuff))]]].
+        * left. apply not_in_cons. split ; try easy.
+            apply not_in_cons. split ; easy.
+        * right. exists (privately_index B0 index_B :: publicly_ChallengeReply B0 A0 n0 index_B 0 :: pre). 
+            exists suff. split.
+            + rewrite <- app_comm_cons. rewrite <- app_comm_cons. apply f_equal. apply f_equal. assumption.
+            + split ; try easy. apply not_in_cons. split ; try easy.
+                apply not_in_cons. split ; easy.
 Admitted.
 
 (* Théorèmes d'authenticité *)
