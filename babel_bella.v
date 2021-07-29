@@ -532,7 +532,7 @@ Theorem Send_authenticity:
         List.In (publicly_Send A B pkt index pc) evs.
 Proof.
     intros sigma evs A A' B B' pkt index pc. intros Hnetwork HIn.
-    induction Hnetwork.
+    induction Hnetwork ; try easy.
     - (* Dans le cas de Network_Attack, on doit discriminer sur X,
             - si X = format_MAC_Send A B pkt index pc alors, comme on a 
                 synth (analz (knows Attacker evs)) X, on a, par définition de knows_attacker
@@ -544,7 +544,6 @@ Proof.
                 et donc on applique l'hypothèse de récurrence
         *)
         admit.
-    - easy.
     - apply in_cons. apply IHHnetwork. apply in_inv in HIn ; easy.
     - (* Dans le cas de Network_Send, on doit discriminer sur l'égalité des couples (index, index_B)
         et (pc, pc_B). En effet, il peut très bien y avoir d'autres messages échangés sur le réseau.
@@ -572,6 +571,24 @@ Theorem ChallengeRequest_authenticity:
         Network sigma evs ->
         List.In (publicly A' B' (format_MAC_ChallengeRequest A B n0)) evs ->
         List.In (publicly_ChallengeRequest A B n0) evs.
+Proof.
+    intros sigma evs A A' B B' n0. intros Hnetwork HIn.
+    induction Hnetwork ; try easy.
+    - admit.
+    - apply in_cons. apply IHHnetwork. apply in_inv in HIn ; easy.
+    - apply in_cons. apply IHHnetwork. apply in_inv in HIn ; easy.
+    - apply in_cons. apply IHHnetwork. apply in_inv in HIn ; easy.
+    - apply in_cons. assert ( Hdistinct : (n0 = n1) \/ (n0 <> n1) ). admit. 
+        destruct Hdistinct as [HeqNonce | HdistinctNonce].
+        * rewrite <- HeqNonce. assert ( HeqChallRequest : publicly_ChallengeRequest A B n0 =
+                                    publicly_ChallengeRequest A0 B0 n0 ). admit.
+            rewrite <- HeqChallRequest. apply in_eq.
+        * assert ( HdistinctChallReq : publicly_ChallengeRequest A B n0 <>
+                                        publicly_ChallengeRequest A0 B0 n1 ). admit.
+            apply in_cons. apply IHHnetwork. apply in_inv in HIn ; try easy.
+            apply in_inv in HIn ; try easy. admit.
+    - apply in_cons. apply in_cons. apply IHHnetwork. apply in_inv in HIn ; try easy.
+        apply in_inv in HIn ; easy.
 Admitted.
 
 Theorem ChallengeReply_authenticity:
