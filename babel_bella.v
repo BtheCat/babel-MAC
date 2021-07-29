@@ -521,11 +521,50 @@ Admitted.
 
 (* Théorèmes d'authenticité *)
 
+Lemma in_inv:
+    forall {A} (a b: A) (l: list A), List.In a (b :: l) -> a <> b -> List.In a l.
+Admitted.
+
 Theorem Send_authenticity:
     forall sigma evs A A' B B' pkt index pc,
         Network sigma evs ->
         List.In (publicly A' B' (format_MAC_Send A B pkt index pc)) evs ->
         List.In (publicly_Send A B pkt index pc) evs.
+Proof.
+    intros sigma evs A A' B B' pkt index pc. intros Hnetwork HIn.
+    induction Hnetwork.
+    - (* Dans le cas de Network_Attack, on doit discriminer sur X,
+            - si X = format_MAC_Send A B pkt index pc alors, comme on a 
+                synth (analz (knows Attacker evs)) X, on a, par définition de knows_attacker
+                    List.In (publicly A B X) evs.
+                Ainsi, on a List.In (publicly A B (format_MAC_Send A B pkt index pc)) evs.
+                D'où le résultat pour ce cas.
+            - sinon, on a alors 
+                    publicly A' B' (format_MAC_Send A B pkt index pc) <> publicly Attacker B0 X
+                et donc on applique l'hypothèse de récurrence
+        *)
+        admit.
+    - easy.
+    - apply in_cons. apply IHHnetwork. apply in_inv in HIn ; easy.
+    - (* Dans le cas de Network_Send, on doit discriminer sur l'égalité des couples (index, index_B)
+        et (pc, pc_B). En effet, il peut très bien y avoir d'autres messages échangés sur le réseau.
+        Dans le cas où les deux couples sont égaux, on est dans le cas où le message que l'on souhaite ajouter
+        avec Network_Send est celui qui nous intéresse.
+        Dans le cas où au moins l'un des deux couples est différent, on est dans le cas d'un autre message,
+        on applique alors l'hypothèse de récurrence *)
+        assert ( Hdistinct : (index = index_B /\ pc = pc_B) \/ (index <> index_B \/ pc <> pc_B) ).
+        apply distinct_index_PC_dec. destruct Hdistinct as [(HindexEq & HpcEq) | Hdistinct].
+        * assert ( HeqSend : publicly_Send A B pkt index pc = 
+                                publicly_Send B0 A0 pkt0 index_B pc_B). admit.
+            rewrite <- HeqSend. apply in_eq.
+        * assert ( HdistinctSend : publicly_Send A B pkt index pc <> 
+                                publicly_Send B0 A0 pkt0 index_B pc_B). admit.
+            apply in_cons. apply IHHnetwork. apply in_inv in HIn ; try easy. admit.
+    - apply in_cons. apply IHHnetwork. apply in_inv in HIn ; easy.
+    - apply in_cons. apply in_cons. apply IHHnetwork. apply in_inv in HIn ; try easy. 
+        apply in_inv in HIn ; easy.
+    - apply in_cons. apply in_cons. apply IHHnetwork. apply in_inv in HIn ; try easy. 
+        apply in_inv in HIn ; easy.
 Admitted.
 
 Theorem ChallengeRequest_authenticity:
