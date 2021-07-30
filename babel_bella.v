@@ -204,10 +204,11 @@ Definition update_index (sigma: global_state) A B new_index :=
 Definition update_PC_index (sigma: global_state) A B new_pc new_index :=
     update_index (update_PC sigma A B new_pc) A B new_index.
     
-Definition set_nonce (sigma: global_state) A B new_nonce :=
+Definition set_nonce (sigma: global_state) A B new_nonce b :=
     fun A' =>
         if eqb A' A then 
-            let set_new_nonce B' := if eqb B' B then (fun n => Nat.eqb n new_nonce)
+            let set_new_nonce B' := if eqb B' B then 
+                            (fun n =>  if Nat.eqb n new_nonce then b else (sigma A).(_nonce) B n)
                         else (sigma A).(_nonce) B'
             in
             LS (sigma A).(_PC) (sigma A).(_index) set_new_nonce
@@ -254,32 +255,33 @@ Inductive Network: global_state -> capture -> Prop :=
         sigma1 = update_PC sigma A B pc_B ->
         Network sigma1 ( privately_Accept A B pkt index_B pc_B :: evs )
         
-    | Network_ChallengeRequest: forall sigma evs A B n0,
+    | Network_ChallengeRequest: forall sigma evs A B n0 sigma1,
         Network sigma evs -> 
         fresh_nonce A evs n0 ->
-        Network sigma 
+        sigma1 = set_nonce sigma A B n0 true ->
+        Network sigma1 
             ( privately_nonce A n0 :: publicly_ChallengeRequest A B n0 :: evs ) 
         
-    | Network_ChallengeReply: forall sigma evs A A' B n0 index_B sigma1 sigma2 sigma3,
+    | Network_ChallengeReply: forall sigma evs A A' B n0 index_B sigma1 sigma2,
         Network sigma evs -> 
         List.In (publicly A' B (format_MAC_ChallengeRequest A B n0)) evs ->
         (* test_nonce sigma B A n0 = false ->*)
         fresh_index B evs index_B ->
         sigma1 = update_index sigma B B index_B ->
         sigma2 = update_PC sigma1 B B 0 ->
-        sigma3 = sigma2 (* set_nonce sigma2 B A n0*) ->
-        Network sigma3
+        Network sigma2
             ( privately_index B index_B :: 
                 publicly_ChallengeReply B A n0 index_B 0 :: evs )
                 
-    | Network_ChallengeAccept: forall sigma evs A B B' n0 index_B pc_B sigma1 sigma2,
+    | Network_ChallengeAccept: forall sigma evs A B B' n0 index_B pc_B sigma1 sigma2 sigma3,
         Network sigma evs ->
         List.In (publicly_ChallengeRequest A B n0) evs ->
         List.In (publicly B' A (format_MAC_ChallengeReply B A n0 index_B pc_B)) evs ->
-        ~ List.Exists ( fun ev => exists index pc, ev = privately_ChallengeAccept A B n0 index pc ) evs ->
+        test_nonce sigma A B n0 = true ->
         sigma1 = update_index sigma A B index_B ->
         sigma2 = update_PC sigma1 A B pc_B ->
-        Network sigma2 
+        sigma3 = set_nonce sigma2 A B n0 false ->
+        Network sigma3 
             ( privately_ChallengeAccept A B n0 index_B pc_B :: evs ).
 
 Definition R (index1: string) pc1 index2 pc2 := index1 = index2 -> pc1 <= pc2.
