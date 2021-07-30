@@ -95,11 +95,16 @@ Definition format_nonce nonce := Atom (inr (Nonce nonce)).
 Definition format_Accept A B pkt index pc := Tuple [Atom (inl TagAccept) ; 
     Atom (inl (Agent A)) ; Atom (inl (Agent B)) ; Atom (inl (Literal pkt)) ; 
     Atom (inr (Index index)) ; Atom (inl (PC pc))].
+Definition format_ChallengeAccept A B n0 index pc := Tuple [Atom (inl TagAccept) ; 
+    Atom (inl (Agent A)) ; Atom (inl (Agent B)) ; Atom (inr (Nonce n0)) ; 
+    Atom (inr (Index index)) ; Atom (inl (PC pc))].
 
 Definition privately_index A index := privately A (format_index index).
 Definition privately_nonce A nonce := privately A (format_nonce nonce).
 Definition privately_Accept A B pkt index pc := 
     privately A (format_Accept A B pkt index pc).
+Definition privately_ChallengeAccept A B n0 index pc := 
+    privately A (format_ChallengeAccept A B n0 index pc).
 
 Definition format_Send pkt index pc := Tuple [Atom (inl TagSend) ; Atom (inl (Literal pkt)) ; 
     Atom (inr (Index index)) ; Atom (inl (PC pc))].
@@ -265,9 +270,18 @@ Inductive Network: global_state -> capture -> Prop :=
         sigma3 = sigma2 (* set_nonce sigma2 B A n0*) ->
         Network sigma3
             ( privately_index B index_B :: 
-                publicly_ChallengeReply B A n0 index_B 0 :: evs ).
+                publicly_ChallengeReply B A n0 index_B 0 :: evs )
+                
+    | Network_ChallengeAccept: forall sigma evs A B B' n0 index_B pc_B sigma1 sigma2,
+        Network sigma evs ->
+        List.In (publicly_ChallengeRequest A B n0) evs ->
+        List.In (publicly B' A (format_MAC_ChallengeReply B A n0 index_B pc_B)) evs ->
+        sigma1 = update_index sigma A B index_B ->
+        sigma2 = update_PC sigma1 A B pc_B ->
+        Network sigma2 
+            ( privately_ChallengeAccept A B n0 index_B pc_B :: evs ).
 
-Definition R (index1: string) pc1 index2 pc2 := index1 <> index2 \/ pc1 <= pc2.
+Definition R (index1: string) pc1 index2 pc2 := index1 = index2 -> pc1 <= pc2.
 Definition R_sigma sigma sigma' :=
         forall A B,
             R (lookup_index sigma A B) (lookup_PC sigma A B) 
@@ -284,7 +298,8 @@ Proof.
     (*
         On procède par induction sur evs :
         - soit on bump par 1 le pc dans sigma et sigma' donc ok
-        - soit on change l'indice 
+        - soit on change l'indice, si les nouveaux indices sont égaux, alors les pc sont aussi égaux, 
+                sinon on a bien la relation R
         - soit on ne touche à rien
     *)
 Admitted.
@@ -524,10 +539,10 @@ Proof.
     - assert ( Hdiscriminate : (index = index_B /\ pc = pc_B) \/ (index <> index_B \/ pc <> pc_B) ).
         apply distinct_index_PC_dec. destruct Hdiscriminate as [(HindexEq & HpcEq) | Hdistinct].
         * assert ( HeqAccept : privately_Accept A0 B0 pkt0 index_B pc_B = 
-                                privately_Accept A B pkt index_B pc_B). admit.
+                                privately_Accept A B pkt index pc). admit.
             right. exists []. exists evs. simpl. split.
             + f_equal. subst. assumption.
-            + split ; try easy. eapply Accept_unicity.
+            + split ; try easy. rewrite <- HeqAccept. eapply Accept_unicity. eapply Network_Accept ; eauto.
         * assert ( HdistinctAccept : privately_Accept A B pkt index pc <> 
                                     privately_Accept A0 B0 pkt0 index_B pc_B ). admit.
             destruct IHHnetwork as [HnotIn | [pre [suff (Hin & HnotInPre & HnotInSuff)]]].            
