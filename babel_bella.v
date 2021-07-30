@@ -19,6 +19,10 @@ Definition eqb (A B: agent) :=
         | _, _ => false 
     end.
 
+Lemma refl_eqb:
+    forall A, eqb A A = true.
+Admitted.
+
 (* Messages *)
 
 Variant public :=
@@ -263,6 +267,33 @@ Inductive Network: global_state -> capture -> Prop :=
             ( privately_index B index_B :: 
                 publicly_ChallengeReply B A n0 index_B 0 :: evs ).
 
+Definition R (index1: string) pc1 index2 pc2 := index1 <> index2 \/ pc1 <= pc2.
+
+Definition leq_capture evs evs' := exists pre, evs' = pre ++ evs.
+
+Lemma 
+
+Lemma invariant:
+    forall sigma sigma' evs evs',
+        Network sigma evs ->
+        leq_capture evs evs' ->
+        Network sigma' evs' ->
+        forall A B,
+            R (lookup_index sigma A B) (lookup_PC sigma A B) 
+                (lookup_index sigma' A B) (lookup_PC sigma' A B).
+Proof.
+    (*
+        On procède par induction sur le prefixe pre.
+        - Dans le cas de la liste vide, on s'attend à sigma = sigma'
+    *)
+Admitted.
+
+Lemma Accept_unicity:
+    forall sigma evs A B pkt index_B pc_B, 
+        Network sigma ( privately_Accept A B pkt index_B pc_B :: evs ) ->
+        ~ (List.In ( privately_Accept A B pkt index_B pc_B ) evs).
+Admitted.
+
 
 (* Théorèmes montrant que les prédicats Network_Send, Network_reset et Network_ChallengeRequest peuvent toujours se faire *)
 
@@ -276,14 +307,10 @@ Proof.
     - assumption.
     - unfold init_global_state in H. split. 
         * unfold saved_index. unfold lookup_index. subst. 
-            exists (index_seed B). simpl.
-            assert ( eqb B B = true ). admit.
-            rewrite H. reflexivity.
+            exists (index_seed B). simpl. rewrite refl_eqb. reflexivity.
         * unfold saved_PC. unfold lookup_PC. subst.
-            exists 0. simpl. 
-            assert ( eqb B B = true ). admit.
-            rewrite H. reflexivity.
-    -  
+            exists 0. simpl. rewrite refl_eqb. reflexivity.
+    -
 Admitted.
 
 Theorem can_Send:
@@ -368,8 +395,9 @@ Proof.
         destruct HsavedPC as [(pc, HsavedPC) | HnotPC].
         + assert ( HcanSend : exists sigma' evs' index' pc',
                         Network sigma' evs' 
-                        /\ List.In (publicly_Send A B pkt index' pc') evs' 
+                        /\ List.In (publicly_Send B A pkt index' pc') evs' 
                         /\ exists pre, evs' = pre ++ evs ).
+            eapply can_Send ; eauto.
     (* Pour démontrer ce théorème il y a 2 cas possibles :
         cas 1 : les conditions sont réunies pour accepter une requête
             alors pre = [ privately_Accept ... ; publicly_Send ... ]
@@ -454,7 +482,7 @@ Lemma distinct_index_PC_dec:
         (index = index' /\ pc = pc') \/ (index <> index' \/ pc <> pc').
 Admitted.
 
-Theorem Accept_unicity:
+Theorem safety:
     forall sigma evs index pc A B pkt,
         Network sigma evs ->
         unique ( privately_Accept A B pkt index pc ) evs.
@@ -477,8 +505,8 @@ Proof.
         * right. exists (publicly_Send B0 A0 pkt0 index_B pc_B :: pre). exists suff. split.
             + rewrite <- app_comm_cons. apply f_equal. assumption.
             + split ; try easy. apply not_in_cons. split ; easy.
-    - assert ( Hdistinct : (index = index_B /\ pc = pc_B) \/ (index <> index_B \/ pc <> pc_B) ).
-        apply distinct_index_PC_dec. destruct Hdistinct as [(HindexEq & HpcEq) | Hdistinct].
+    - assert ( Hdiscriminate : (index = index_B /\ pc = pc_B) \/ (index <> index_B \/ pc <> pc_B) ).
+        apply distinct_index_PC_dec. destruct Hdiscriminate as [(HindexEq & HpcEq) | Hdistinct].
         * assert ( HeqAccept : privately_Accept A0 B0 pkt0 index_B pc_B = 
                                 privately_Accept A B pkt index_B pc_B). admit.
             destruct IHHnetwork as [HnotIn | [pre [suff (Hin & HnotInPre & HnotInSuff)]]].
@@ -551,8 +579,8 @@ Proof.
         avec Network_Send est celui qui nous intéresse.
         Dans le cas où au moins l'un des deux couples est différent, on est dans le cas d'un autre message,
         on applique alors l'hypothèse de récurrence *)
-        assert ( Hdistinct : (index = index_B /\ pc = pc_B) \/ (index <> index_B \/ pc <> pc_B) ).
-        apply distinct_index_PC_dec. destruct Hdistinct as [(HindexEq & HpcEq) | Hdistinct].
+        assert ( Hdiscriminate : (index = index_B /\ pc = pc_B) \/ (index <> index_B \/ pc <> pc_B) ).
+        apply distinct_index_PC_dec. destruct Hdiscriminate as [(HindexEq & HpcEq) | Hdistinct].
         * assert ( HeqSend : publicly_Send A B pkt index pc = 
                                 publicly_Send B0 A0 pkt0 index_B pc_B). admit.
             rewrite <- HeqSend. apply in_eq.
@@ -578,8 +606,8 @@ Proof.
     - apply in_cons. apply IHHnetwork. apply in_inv in HIn ; easy.
     - apply in_cons. apply IHHnetwork. apply in_inv in HIn ; easy.
     - apply in_cons. apply IHHnetwork. apply in_inv in HIn ; easy.
-    - apply in_cons. assert ( Hdistinct : (n0 = n1) \/ (n0 <> n1) ). admit. 
-        destruct Hdistinct as [HeqNonce | HdistinctNonce].
+    - apply in_cons. assert ( Hdiscriminate : (n0 = n1) \/ (n0 <> n1) ). admit. 
+        destruct Hdiscriminate as [HeqNonce | HdistinctNonce].
         * rewrite <- HeqNonce. assert ( HeqChallRequest : publicly_ChallengeRequest A B n0 =
                                     publicly_ChallengeRequest A0 B0 n0 ). admit.
             rewrite <- HeqChallRequest. apply in_eq.
@@ -605,8 +633,8 @@ Proof.
     - apply in_cons. apply IHHnetwork. apply in_inv in HIn ; easy.
     - apply in_cons. apply in_cons. apply IHHnetwork. apply in_inv in HIn ; try easy.
         apply in_inv in HIn ; easy.
-    - apply in_cons. assert ( Hdistinct : (n0 = n1) \/ (n0 <> n1) ). admit.
-        destruct Hdistinct as [HeqNonce | HdistinctNonce].
+    - apply in_cons. assert ( Hdiscriminate : (n0 = n1) \/ (n0 <> n1) ). admit.
+        destruct Hdiscriminate as [HeqNonce | HdistinctNonce].
         * rewrite <- HeqNonce. assert ( HeqChallReply : publicly_ChallengeReply A B n0 index pc =
                                                         publicly_ChallengeReply B0 A0 n0 index_B 0 ). admit.
             rewrite <- HeqChallReply. apply in_eq.
