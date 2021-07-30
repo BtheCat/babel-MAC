@@ -312,9 +312,7 @@ Lemma invariant:
         Network sigma evs ->
         leq_capture evs evs' ->
         Network sigma' evs' ->
-        forall A B,
-            R (lookup_index sigma A B) (lookup_PC sigma A B) 
-                (lookup_index sigma' A B) (lookup_PC sigma' A B).
+        R_sigma sigma sigma'.
 Proof.
     (*
         On procède par induction sur le prefixe pre.
