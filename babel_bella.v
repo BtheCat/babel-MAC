@@ -91,7 +91,6 @@ Definition publicly A B msg := E (Publicly A B) msg.
 Definition privately A msg := E (Privately A) msg.
 
 Definition format_index B index := Tuple [Atom (inl (Agent B)) ; Atom (inr (Index index))].
-Definition format_nonce nonce := Atom (inr (Nonce nonce)).
 Definition format_Accept A B pkt index pc := Tuple [Atom (inl TagAccept) ; 
     Atom (inl (Agent A)) ; Atom (inl (Agent B)) ; Atom (inl (Literal pkt)) ; 
     Atom (inr (Index index)) ; Atom (inl (PC pc))].
@@ -99,8 +98,7 @@ Definition format_ChallengeAccept A B n0 index pc := Tuple [Atom (inl TagAccept)
     Atom (inl (Agent A)) ; Atom (inl (Agent B)) ; Atom (inr (Nonce n0)) ; 
     Atom (inr (Index index)) ; Atom (inl (PC pc))].
 
-Definition privately_index A B index := privately A (format_index B index).
-Definition privately_nonce A nonce := privately A (format_nonce nonce).
+Definition privately_reset A B index := privately A (format_index B index).
 Definition privately_Accept A B pkt index pc := 
     privately A (format_Accept A B pkt index pc).
 Definition privately_ChallengeAccept A B n0 index pc := 
@@ -223,7 +221,7 @@ Definition init_global_state (seed: agent -> string): global_state :=
 (* Definition saved_index sigma A B index := Some index = lookup_index sigma A B.
 Definition saved_PC sigma A B pc := Some pc = lookup_PC sigma A B. *)
 
-Definition is_privately_index A B ev := exists ix, ev = privately_index A B ix.
+Definition is_privately_reset A B ev := exists ix, ev = privately_reset A B ix.
 Definition is_publicly_Send A ev := exists B pkt ix pc, ev = publicly_Send A B pkt ix pc.
 Definition is_publicly_ChallengeRequest A B ev := exists n0, ev = publicly_ChallengeRequest A B n0.
 Definition is_privately_ChallengeAccept A B ev := exists n ix pc, ev = privately_ChallengeAccept A B n ix pc.
@@ -233,10 +231,13 @@ Inductive local_index (A B: agent) (ix: string): capture -> Prop :=
     | local_index_init: 
         init_state A (format_index B ix) -> 
         local_index A B ix [] 
-    | local_index_now evs: 
-        local_index A B ix ( privately_index A B ix :: evs )
+    | local_index_now_reset evs: 
+        local_index A B ix ( privately_reset A B ix :: evs )
+    | local_index_now_ChallengeReply evs n0 pc:
+        local_index A B ix ( publicly_ChallengeReply A B n0 ix pc :: evs )
     | local_index_later ev evs: 
-        ~ is_privately_index A B ev -> 
+        ~ is_privately_reset A B ev -> 
+        ~ is_publicly_ChallengeRequest A B ev ->
         local_index A B ix evs -> 
         local_index A B ix (ev :: evs).
 
@@ -251,13 +252,13 @@ Inductive saved_index (A B: agent) (ix: string): capture -> Prop :=
 Inductive local_PC (A B: agent): nat -> capture -> Prop :=
     | local_PC_init:
         local_PC A B 0 []
-    | local_PC_now_index evs ix:
-        local_PC A B 0 ( privately_index A B ix :: evs )
+    | local_PC_now_reset evs ix:
+        local_PC A B 0 ( privately_reset A B ix :: evs )
     | local_PC_now_Send evs pc pkt ix pc':
         local_PC A B pc evs ->
         local_PC A B (pc + 1) ( publicly_Send A B pkt ix pc' :: evs )
     | local_PC_later ev evs pc: 
-        ~ is_privately_index A A ev -> 
+        ~ is_privately_reset A A ev -> 
         ~ is_publicly_Send A ev ->
         local_PC A B pc evs -> 
         local_PC A B pc (ev :: evs).
@@ -301,7 +302,7 @@ Inductive Network: (*global_state ->*) capture -> Prop :=
         fresh_index B evs index_B ->
         (* sigma1 = update_index sigma B B index_B ->
         sigma2 = update_PC sigma1 B B 0 -> *)
-        Network (* sigma2 *) ( privately_index B A index_B :: evs )
+        Network (* sigma2 *) ( privately_reset B A index_B :: evs )
 
     (* Fix me: miss Network_saved_reset*)
 
@@ -325,7 +326,7 @@ Inductive Network: (*global_state ->*) capture -> Prop :=
         fresh_nonce A evs n0 ->
         (* sigma1 = set_nonce sigma A B n0 true -> *)
         Network (* sigma1 *)
-            ( privately_nonce A n0 :: publicly_ChallengeRequest A B n0 :: evs ) 
+            ( publicly_ChallengeRequest A B n0 :: evs ) 
         
     | Network_ChallengeReply: forall (* sigma *) evs A A' B n0 index_B (* sigma1 sigma2 *),
         Network (* sigma *) evs -> 
@@ -335,8 +336,7 @@ Inductive Network: (*global_state ->*) capture -> Prop :=
         (*sigma1 = update_index sigma B B index_B ->
         sigma2 = update_PC sigma1 B B 0 -> *)
         Network (* sigma2 *)
-            ( privately_index B A index_B :: 
-                publicly_ChallengeReply B A n0 index_B 0 :: evs )
+            ( publicly_ChallengeReply B A n0 index_B 0 :: evs )
                 
     | Network_ChallengeAccept: forall (* sigma *) evs A B B' n0 index_B pc_B (* sigma1 sigma2 sigma3 *),
         Network (* sigma *) evs ->
@@ -349,9 +349,32 @@ Inductive Network: (*global_state ->*) capture -> Prop :=
         Network (* sigma3 *)
             ( privately_ChallengeAccept A B n0 index_B pc_B :: evs ).
 
-Definition R (index1: string) pc1 index2 pc2 := index1 = index2 -> pc1 <= pc2.
+Axiom R: capture -> capture -> Prop.
+Definition leq_capture (evs evs': capture) := exists pre, evs' = pre ++ evs.
 
-Definition leq_capture evs evs' := exists pre, evs' = pre ++ evs.
+Lemma R_cons:
+    forall ev evs,
+        Network (ev :: evs) ->
+        R evs (ev :: evs).
+Admitted.
+
+Lemma R_leq:
+    forall evs evs',
+        leq_capture evs evs' ->
+        Network evs' ->
+        R evs evs'.
+Admitted.
+
+Lemma R_proj:
+    forall A B evs evs' ix ix' pc pc',
+        R evs evs' ->
+        saved_index A B ix evs ->
+        saved_PC A B pc evs ->
+        saved_index A B ix' evs' ->
+        saved_PC A B pc' evs' ->
+        ix = ix' ->
+        pc <= pc'.
+Admitted.
 
 (*Lemma invariant_init:
     forall sigma sigma' evs,
@@ -381,10 +404,46 @@ Proof.
     *)
 Admitted.*)
 
+Lemma stability:
+    forall ev evs,
+        Network evs ->
+        List.In ev evs ->
+        exists evs',
+            leq_capture (ev :: evs') evs 
+            /\ Network (ev :: evs').
+Admitted.
+
+Lemma Accept_Inversion:
+forall evs A B pkt index pc,
+    Network evs ->
+    List.In (privately_Accept A B pkt index pc) evs ->
+    exists pc',
+        List.In (publicly_Send B A pkt index pc) evs 
+        /\ saved_index A B index evs
+        /\ saved_PC A B pc' evs /\ pc' < pc.
+Admitted.
+
 Lemma Accept_unicity:
     forall evs A B pkt index_B pc_B, 
         Network ( privately_Accept A B pkt index_B pc_B :: evs ) ->
         ~ (List.In ( privately_Accept A B pkt index_B pc_B ) evs).
+Proof.
+    intros evs A B pkt index_B pc_B. intros Hnetwork HIn.
+    assert ( exists pc',
+        List.In (publicly_Send B A pkt index_B pc_B) evs 
+        /\ saved_index A B index_B evs
+        /\ saved_PC A B pc' evs /\ pc' < pc_B ) as (pc1 & ? & ? & ? & ?). admit.
+    assert ( exists pc' evs',
+        leq_capture (privately_Accept A B pkt index_B pc_B :: evs') evs 
+        /\ List.In (publicly_Send B A pkt index_B pc_B) evs' 
+        /\ saved_index A B index_B evs'
+        /\ saved_PC A B pc' evs' /\ pc' < pc_B ) as (pc' & evs' & ? & ? & ? & ? & ?). admit.
+    assert ( saved_index A B index_B (privately_Accept A B pkt index_B pc_B :: evs') ). admit.
+    assert ( saved_PC A B pc_B (privately_Accept A B pkt index_B pc_B :: evs') ). admit.
+    assert ( R (privately_Accept A B pkt index_B pc_B :: evs') evs ).
+    apply R_leq. auto. admit.
+    assert ( pc_B <= pc1 ). eapply R_proj ; eauto. SearchAbout ( ?x < ?y ) .
+    eapply Lt.le_not_lt ; eauto.
 Admitted.
 
 
@@ -431,7 +490,7 @@ Theorem can_reset:
     forall sigma evs B, Network sigma evs -> 
         exists sigma1 evs' index, 
             Network sigma1 evs' 
-            /\ List.In (privately_index B index) evs' 
+            /\ List.In (privately_reset B index) evs' 
             /\ (exists pre, evs' = pre ++ evs).
 Admitted.
 *)
@@ -455,7 +514,7 @@ Proof.
     eexists. exists n0. split.
     - eapply Network_ChallengeRequest ; eauto.
     - split ; try firstorder.
-        exists [privately_nonce A n0 ; publicly_ChallengeRequest A B n0]. auto.
+        exists [publicly_ChallengeRequest A B n0]. auto.
 Qed.
 
 Theorem liveness:
@@ -485,7 +544,7 @@ Proof.
             alors pre = [ privately_Accept ... ; publicly_Send ... ]
         cas 2 : au moins une des conditions n'est pas valide 
             alors pre = [ privately_Accept ... ; publicly_Send ... ;
-                            privately_index ... ; publicly_ChallengeReply ... ;
+                            privately_reset ... ; publicly_ChallengeReply ... ;
                             privately_nonce ... ; publicly_ChallengeRequest ... ]
     Dans le cas 2, il faut montrer que la procédure de Challenge / Reply permet de réunir les conditions 
         pour accepter la requête.
@@ -495,23 +554,7 @@ Admitted.
 
 (* Théorèmes de spoofing *)
 
-Lemma insert_attack:
-    forall evs A B X, 
-        Network evs ->
-        List.In (publicly A B X) evs ->
-        List.In (publicly Attacker B X) evs.
-Admitted.
-
-Lemma Accept_Inversion:
-    forall evs A B pkt index pc,
-        Network evs ->
-        List.In (privately_Accept A B pkt index pc) evs ->
-        exists pc',
-            List.In (publicly_Send B A pkt index pc) evs 
-            /\ saved_index A B index evs
-            /\ saved_PC A B pc' evs /\ pc' < pc.
-Admitted.
-
+(* Fix me: this is not actually spoofing
 Theorem spoofing_Accept:
     forall evs A B pkt index pc,
         Network evs ->
@@ -534,7 +577,7 @@ Proof.
         - split. 
             * eapply in_eq. 
             * apply in_cons. eapply insert_attack ; eauto.
-Qed.
+Qed.*)
 
 (* Théorèmes d'unicité des événements *)
 
@@ -579,7 +622,7 @@ Proof.
     - auto.
     - destruct IHHnetwork as [HnotIn | [pre [suff (Hevs & (HnotInPre & HnotInSuff))]]].
         * left. apply not_in_cons. split ; easy.
-        * right. exists (privately_index B0 A0 index_B :: pre). exists suff. split.
+        * right. exists (privately_reset B0 A0 index_B :: pre). exists suff. split.
             + rewrite <- app_comm_cons. apply f_equal. assumption.
             + split ; try easy. apply not_in_cons. split ; easy.
     - destruct IHHnetwork as [HnotIn | [pre [suff (Hevs & (HnotInPre & HnotInSuff))]]].
@@ -612,7 +655,7 @@ Proof.
     - destruct IHHnetwork as [HnotIn | [pre [suff (Hevs & (HnotInPre & HnotInSuff))]]].
         * left. apply not_in_cons. split ; try easy.
             apply not_in_cons. split ; easy.
-        * right. exists (privately_index B0 A0 index_B :: publicly_ChallengeReply B0 A0 n0 index_B 0 :: pre). 
+        * right. exists (privately_reset B0 A0 index_B :: publicly_ChallengeReply B0 A0 n0 index_B 0 :: pre). 
             exists suff. split.
             + rewrite <- app_comm_cons. rewrite <- app_comm_cons. apply f_equal. apply f_equal. assumption.
             + split ; try easy. apply not_in_cons. split ; try easy.
@@ -703,8 +746,7 @@ Proof.
     - apply in_cons. apply IHHnetwork. apply in_inv in HIn ; easy.
     - apply in_cons. apply IHHnetwork. apply in_inv in HIn ; easy.
     - apply in_cons. apply IHHnetwork. apply in_inv in HIn ; easy.
-    - apply in_cons. apply in_cons. apply IHHnetwork. apply in_inv in HIn ; try easy.
-        apply in_inv in HIn ; easy.
+    - apply in_cons.  apply IHHnetwork. apply in_inv in HIn ; try easy.
     - apply in_cons. assert ( Hdiscriminate : (n0 = n1) \/ (n0 <> n1) ). admit.
         destruct Hdiscriminate as [HeqNonce | HdistinctNonce].
         * rewrite <- HeqNonce. assert ( HeqChallReply : publicly_ChallengeReply A B n0 index pc =
