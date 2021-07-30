@@ -296,12 +296,14 @@ Inductive Network: (*global_state ->*) capture -> Prop :=
         sigma = init_global_state index_seed ->*)
         Network (* sigma *) []
 
-    | Network_reset: forall (* sigma *) evs A B index_B (* sigma1 sigma2 *),
+    | Network_local_reset: forall (* sigma *) evs A B index_B (* sigma1 sigma2 *),
         Network (* sigma *) evs -> 
         fresh_index B evs index_B ->
         (* sigma1 = update_index sigma B B index_B ->
         sigma2 = update_PC sigma1 B B 0 -> *)
         Network (* sigma2 *) ( privately_index B A index_B :: evs )
+
+    (* Fix me: miss Network_saved_reset*)
 
     | Network_Send: forall (* sigma *) evs A B pkt index_B pc_B (* sigma1 *),
         Network (* sigma *) evs -> 
@@ -348,14 +350,10 @@ Inductive Network: (*global_state ->*) capture -> Prop :=
             ( privately_ChallengeAccept A B n0 index_B pc_B :: evs ).
 
 Definition R (index1: string) pc1 index2 pc2 := index1 = index2 -> pc1 <= pc2.
-Definition R_sigma sigma sigma' :=
-        forall A B,
-            R (lookup_index sigma A B) (lookup_PC sigma A B) 
-                (lookup_index sigma' A B) (lookup_PC sigma' A B).
 
 Definition leq_capture evs evs' := exists pre, evs' = pre ++ evs.
 
-Lemma invariant_init:
+(*Lemma invariant_init:
     forall sigma sigma' evs,
         Network sigma evs ->
         Network sigma' evs ->
@@ -368,9 +366,9 @@ Proof.
                 sinon on a bien la relation R
         - soit on ne touche à rien
     *)
-Admitted.
+Admitted.*)
 
-Lemma invariant:
+(*Lemma invariant:
     forall sigma sigma' evs evs',
         Network sigma evs ->
         leq_capture evs evs' ->
@@ -381,11 +379,11 @@ Proof.
         On procède par induction sur le prefixe pre.
         - Dans le cas de la liste vide, on s'attend à sigma = sigma'
     *)
-Admitted.
+Admitted.*)
 
 Lemma Accept_unicity:
-    forall sigma evs A B pkt index_B pc_B, 
-        Network sigma ( privately_Accept A B pkt index_B pc_B :: evs ) ->
+    forall evs A B pkt index_B pc_B, 
+        Network ( privately_Accept A B pkt index_B pc_B :: evs ) ->
         ~ (List.In ( privately_Accept A B pkt index_B pc_B ) evs).
 Admitted.
 
@@ -393,32 +391,32 @@ Admitted.
 (* Théorèmes montrant que les prédicats Network_Send, Network_reset et Network_ChallengeRequest peuvent toujours se faire *)
 
 Lemma Send_always_possible:
-    forall sigma evs B, 
-        Network sigma evs -> 
-        (exists index, saved_index sigma B B index) 
-        /\ (exists pc, saved_PC sigma B B pc).
+    forall evs A B, 
+        Network evs -> 
+        (exists index, local_index A B index evs) 
+        /\ (exists pc, local_PC A B pc evs).
 Proof.
-    intros sigma evs B. intro Hnetwork. induction Hnetwork.
+    (*intros sigma evs B. intro Hnetwork. induction Hnetwork.
     - assumption.
     - unfold init_global_state in H. split. 
         * unfold saved_index. unfold lookup_index. subst. 
             exists (index_seed B). simpl. rewrite refl_eqb. reflexivity.
         * unfold saved_PC. unfold lookup_PC. subst.
             exists 0. simpl. rewrite refl_eqb. reflexivity.
-    -
+    -*)
 Admitted.
 
 Theorem can_Send:
-    forall sigma evs A B pkt, 
-        Network sigma evs -> 
-        exists sigma' evs' index pc, 
-            Network sigma' evs' 
+    forall evs A B pkt, 
+        Network evs -> 
+        exists evs' index pc, 
+            Network evs' 
             /\ List.In (publicly_Send B A pkt index pc) evs'
             /\ (exists pre, evs' = pre ++ evs).
 Proof.
-    intros sigma evs A B pkt. intro Hnetwork.
-    pose proof (Send_always_possible sigma evs B Hnetwork) as ([index Hindex] & [pc Hpc]).
-    eexists. eexists. exists index. exists pc. split.
+    intros evs A B pkt. intro Hnetwork.
+    pose proof (Send_always_possible evs B A Hnetwork) as ([index Hindex] & [pc Hpc]).
+    eexists. exists index. exists pc. split.
     - eapply Network_Send ; eauto.
     - split ; try firstorder.
         exists [publicly_Send B A pkt index pc]. auto.
@@ -439,50 +437,38 @@ Admitted.
 *)
 
 Lemma ChallengeRequest_always_possible:
-    forall sigma evs A, 
-        Network sigma evs ->
+    forall evs A, 
+        Network evs ->
         exists n0, fresh_nonce A evs n0.
 Admitted.
 
 Theorem can_Challenge:
-    forall sigma evs A B, 
-        Network sigma evs -> 
-        exists sigma' evs' n0, 
-            Network sigma' evs' 
+    forall evs A B, 
+        Network evs -> 
+        exists evs' n0, 
+            Network evs' 
             /\ List.In (publicly_ChallengeRequest A B n0) evs'
             /\ (exists pre, evs' = pre ++ evs).
 Proof.
-    intros sigma evs A B. intro Hnetwork.
-    pose proof (ChallengeRequest_always_possible sigma evs A Hnetwork) as [n0 Hn0].
-    eexists. eexists. exists n0. split.
+    intros evs A B. intro Hnetwork.
+    pose proof (ChallengeRequest_always_possible evs A Hnetwork) as [n0 Hn0].
+    eexists. exists n0. split.
     - eapply Network_ChallengeRequest ; eauto.
     - split ; try firstorder.
         exists [privately_nonce A n0 ; publicly_ChallengeRequest A B n0]. auto.
 Qed.
 
-Lemma saved_index_dec:
-    forall sigma A B,
-        (exists index, saved_index sigma A B index) \/
-        lookup_index sigma A B = None.
-Admitted.
-
-Lemma saved_PC_dec:
-    forall sigma A B,
-        (exists pc, saved_PC sigma A B pc) \/
-        lookup_PC sigma A B = None.
-Admitted.
-
 Theorem liveness:
-    forall sigma evs A B pkt,
-        Network sigma evs ->
-        exists sigma' evs' index pc,
-            Network sigma' evs'
+    forall evs A B pkt,
+        Network evs ->
+        exists evs' index pc,
+            Network evs'
             /\ List.In (publicly_Send B A pkt index pc) evs' 
             /\ List.In (privately_Accept A B pkt index pc) evs'
             /\ (exists pre, evs' = pre ++ evs).
 Proof.
-    intros sigma evs A B pkt. intro Hnetwork.
-    assert ( HsavedIndex : (exists index, saved_index sigma A B index) 
+    intros evs A B pkt. intro Hnetwork.
+    (*assert ( HsavedIndex : (exists index, saved_index sigma A B index) 
         \/ lookup_index sigma A B = None ). apply saved_index_dec.
     destruct HsavedIndex as [(index, HsavedIndex) | HnotIndex].
     - assert ( HsavedPC : (exists pc, saved_PC sigma A B pc)
@@ -493,6 +479,7 @@ Proof.
                         /\ List.In (publicly_Send B A pkt index' pc') evs' 
                         /\ exists pre, evs' = pre ++ evs ).
             eapply can_Send ; eauto.
+    *)
     (* Pour démontrer ce théorème il y a 2 cas possibles :
         cas 1 : les conditions sont réunies pour accepter une requête
             alors pre = [ privately_Accept ... ; publicly_Send ... ]
@@ -509,40 +496,40 @@ Admitted.
 (* Théorèmes de spoofing *)
 
 Lemma insert_attack:
-    forall sigma evs A B X, 
-        Network sigma evs ->
+    forall evs A B X, 
+        Network evs ->
         List.In (publicly A B X) evs ->
         List.In (publicly Attacker B X) evs.
 Admitted.
 
 Lemma Accept_Inversion:
-    forall sigma evs A B pkt index pc,
-        Network sigma evs ->
+    forall evs A B pkt index pc,
+        Network evs ->
         List.In (privately_Accept A B pkt index pc) evs ->
         exists pc',
             List.In (publicly_Send B A pkt index pc) evs 
-            /\ saved_index sigma A B index 
-            /\ saved_PC sigma A B pc' /\ pc' < pc.
+            /\ saved_index A B index evs
+            /\ saved_PC A B pc' evs /\ pc' < pc.
 Admitted.
 
 Theorem spoofing_Accept:
-    forall sigma evs A B pkt index pc,
-        Network sigma evs ->
+    forall evs A B pkt index pc,
+        Network evs ->
         List.In (privately_Accept A B pkt index pc) evs ->
-        exists sigma' evs', 
-            Network sigma' evs'
+        exists evs', 
+            Network evs'
             /\ List.In (privately_Accept A B pkt index pc) evs' 
             /\ List.In (publicly Attacker A (format_MAC_Send B A pkt index pc)) evs'.
 Proof.
-    intros sigma evs A B pkt index pc. intros Hnetwork HIn.
+    intros evs A B pkt index pc. intros Hnetwork HIn.
     assert (exists pc', 
                 List.In ( publicly_Send B A pkt index pc ) evs
-                /\ saved_index sigma A B index 
-                /\ saved_PC sigma A B pc' /\ pc' < pc ) 
+                /\ saved_index A B index evs 
+                /\ saved_PC A B pc' evs /\ pc' < pc ) 
             as 
             [pc' (HinSend & (HsavedIndex & (HsavedPC & HorderPC)))]. 
     + eapply Accept_Inversion ; eauto.
-    + eexists. eexists. split.
+    + eexists. split.
         - eapply Network_Accept ; eauto.
         - split. 
             * eapply in_eq. 
@@ -561,12 +548,12 @@ Proof.
     - rewrite <- app_comm_cons. apply knows_later. assumption.
 Qed.
 
-Theorem replay: forall sigma evs A B X, 
-    Network sigma evs -> 
+Theorem replay: forall evs A B X, 
+    Network evs -> 
     List.In (publicly A B X) evs ->
-    forall C, Network sigma ( publicly Attacker C X :: evs ).
+    forall C, Network ( publicly Attacker C X :: evs ).
 Proof.
-    intros sigma evs A B X. intros Hnetwork HIn. intro C.
+    intros evs A B X. intros Hnetwork HIn. intro C.
     apply Network_Attack ; try auto.
     apply synth_init. unfold In. apply analz_init. unfold In.
     eapply compatibiliy_knows_in. eauto.
@@ -578,11 +565,11 @@ Lemma distinct_index_PC_dec:
 Admitted.
 
 Theorem safety:
-    forall sigma evs index pc A B pkt,
-        Network sigma evs ->
+    forall evs index pc A B pkt,
+        Network evs ->
         unique ( privately_Accept A B pkt index pc ) evs.
 Proof.
-    intros sigma evs index pc A B pkt. intro Hnetwork.
+    intros evs index pc A B pkt. intro Hnetwork.
     unfold unique. induction Hnetwork.
     - destruct IHHnetwork as [HnotIn | [pre [suff (Hevs & (HnotInPre & HnotInSuff))]]].
         * left. apply not_in_cons. split ; easy.
@@ -592,7 +579,7 @@ Proof.
     - auto.
     - destruct IHHnetwork as [HnotIn | [pre [suff (Hevs & (HnotInPre & HnotInSuff))]]].
         * left. apply not_in_cons. split ; easy.
-        * right. exists (privately_index B0 index_B :: pre). exists suff. split.
+        * right. exists (privately_index B0 A0 index_B :: pre). exists suff. split.
             + rewrite <- app_comm_cons. apply f_equal. assumption.
             + split ; try easy. apply not_in_cons. split ; easy.
     - destruct IHHnetwork as [HnotIn | [pre [suff (Hevs & (HnotInPre & HnotInSuff))]]].
@@ -625,7 +612,7 @@ Proof.
     - destruct IHHnetwork as [HnotIn | [pre [suff (Hevs & (HnotInPre & HnotInSuff))]]].
         * left. apply not_in_cons. split ; try easy.
             apply not_in_cons. split ; easy.
-        * right. exists (privately_index B0 index_B :: publicly_ChallengeReply B0 A0 n0 index_B 0 :: pre). 
+        * right. exists (privately_index B0 A0 index_B :: publicly_ChallengeReply B0 A0 n0 index_B 0 :: pre). 
             exists suff. split.
             + rewrite <- app_comm_cons. rewrite <- app_comm_cons. apply f_equal. apply f_equal. assumption.
             + split ; try easy. apply not_in_cons. split ; try easy.
@@ -639,12 +626,12 @@ Lemma in_inv:
 Admitted.
 
 Theorem Send_authenticity:
-    forall sigma evs A A' B B' pkt index pc,
-        Network sigma evs ->
+    forall evs A A' B B' pkt index pc,
+        Network evs ->
         List.In (publicly A' B' (format_MAC_Send A B pkt index pc)) evs ->
         List.In (publicly_Send A B pkt index pc) evs.
 Proof.
-    intros sigma evs A A' B B' pkt index pc. intros Hnetwork HIn.
+    intros evs A A' B B' pkt index pc. intros Hnetwork HIn.
     induction Hnetwork ; try easy.
     - (* Dans le cas de Network_Attack, on doit discriminer sur X,
             - si X = format_MAC_Send A B pkt index pc alors, comme on a 
@@ -680,12 +667,12 @@ Proof.
 Admitted.
 
 Theorem ChallengeRequest_authenticity:
-    forall sigma evs A A' B B' n0,
-        Network sigma evs ->
+    forall evs A A' B B' n0,
+        Network evs ->
         List.In (publicly A' B' (format_MAC_ChallengeRequest A B n0)) evs ->
         List.In (publicly_ChallengeRequest A B n0) evs.
 Proof.
-    intros sigma evs A A' B B' n0. intros Hnetwork HIn.
+    intros evs A A' B B' n0. intros Hnetwork HIn.
     induction Hnetwork ; try easy.
     - admit.
     - apply in_cons. apply IHHnetwork. apply in_inv in HIn ; easy.
@@ -705,12 +692,12 @@ Proof.
 Admitted.
 
 Theorem ChallengeReply_authenticity:
-    forall sigma evs A A' B B' n0 index pc,
-        Network sigma evs ->
+    forall evs A A' B B' n0 index pc,
+        Network evs ->
         List.In (publicly A' B' (format_MAC_ChallengeReply A B n0 index pc)) evs ->
         List.In (publicly_ChallengeReply A B n0 index pc) evs.
 Proof.
-    intros sigma evs A A' B B' n0 index pc. intros Hnetwork HIn.
+    intros evs A A' B B' n0 index pc. intros Hnetwork HIn.
     induction Hnetwork ; try easy.
     - admit.
     - apply in_cons. apply IHHnetwork. apply in_inv in HIn ; easy.
