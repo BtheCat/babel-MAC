@@ -90,7 +90,7 @@ Record event := E { mode: visibility ; payload: msg }.
 Definition publicly A B msg := E (Publicly A B) msg.
 Definition privately A msg := E (Privately A) msg.
 
-Definition format_index index := Atom (inr (Index index)).
+Definition format_index B index := Tuple [Atom (inl (Agent B)) ; Atom (inr (Index index))].
 Definition format_nonce nonce := Atom (inr (Nonce nonce)).
 Definition format_Accept A B pkt index pc := Tuple [Atom (inl TagAccept) ; 
     Atom (inl (Agent A)) ; Atom (inl (Agent B)) ; Atom (inl (Literal pkt)) ; 
@@ -99,7 +99,7 @@ Definition format_ChallengeAccept A B n0 index pc := Tuple [Atom (inl TagAccept)
     Atom (inl (Agent A)) ; Atom (inl (Agent B)) ; Atom (inr (Nonce n0)) ; 
     Atom (inr (Index index)) ; Atom (inl (PC pc))].
 
-Definition privately_index A index := privately A (format_index index).
+Definition privately_index A B index := privately A (format_index B index).
 Definition privately_nonce A nonce := privately A (format_nonce nonce).
 Definition privately_Accept A B pkt index pc := 
     privately A (format_Accept A B pkt index pc).
@@ -133,7 +133,7 @@ Definition capture := list event.
 
 Parameter index_seed: agent -> string.
 Inductive init_state: agent -> Ensemble msg :=
-    | init_state_index: forall A s, s = index_seed A -> init_state A (format_index s).
+    | init_state_index: forall A s, init_state A (format_index A s).
 
 Inductive knows: agent -> capture -> Ensemble msg :=
     | knows_init A m: init_state A m -> knows A [] m 
@@ -181,7 +181,7 @@ Definition global_state := agent -> local_state.
 
 Definition lookup_PC (sigma: global_state) A B := (sigma A).(_PC) B.
 Definition lookup_index (sigma: global_state) A B := (sigma A).(_index) B.
-Definition test_nonce (sigma: global_state) A B n := (sigma A).(_nonce) B n.
+(* Definition test_nonce (sigma: global_state) A B n := (sigma A).(_nonce) B n. *)
 
 Definition update_PC (sigma: global_state) A B new_pc :=
     fun A' => 
@@ -220,68 +220,131 @@ Definition init_global_state (seed: agent -> string): global_state :=
         ( fun B => (if eqb A B then Some (seed A) else None) ) 
         ( fun _ _ => false ).
 
-Definition saved_index sigma A B index := Some index = lookup_index sigma A B.
-Definition saved_PC sigma A B pc := Some pc = lookup_PC sigma A B.
+(* Definition saved_index sigma A B index := Some index = lookup_index sigma A B.
+Definition saved_PC sigma A B pc := Some pc = lookup_PC sigma A B. *)
 
-Inductive Network: global_state -> capture -> Prop :=
-    | Network_Attack: forall sigma evs X B,
-        Network sigma evs ->
+Definition is_privately_index A B ev := exists ix, ev = privately_index A B ix.
+Definition is_publicly_Send A ev := exists B pkt ix pc, ev = publicly_Send A B pkt ix pc.
+Definition is_publicly_ChallengeRequest A B ev := exists n0, ev = publicly_ChallengeRequest A B n0.
+Definition is_privately_ChallengeAccept A B ev := exists n ix pc, ev = privately_ChallengeAccept A B n ix pc.
+Definition is_privately_Accept A B ev := exists pkt ix pc, ev = privately_Accept A B pkt ix pc.
+
+Inductive local_index (A B: agent) (ix: string): capture -> Prop :=
+    | local_index_init: 
+        init_state A (format_index B ix) -> 
+        local_index A B ix [] 
+    | local_index_now evs: 
+        local_index A B ix ( privately_index A B ix :: evs )
+    | local_index_later ev evs: 
+        ~ is_privately_index A B ev -> 
+        local_index A B ix evs -> 
+        local_index A B ix (ev :: evs).
+
+Inductive saved_index (A B: agent) (ix: string): capture -> Prop :=
+    | saved_index_now evs n0 pc: 
+        saved_index A B ix ( privately_ChallengeAccept A B n0 ix pc :: evs )
+    | saved_index_later ev evs: 
+        ~ is_privately_ChallengeAccept A B ev -> 
+        saved_index A B ix evs -> 
+        saved_index A B ix (ev :: evs).
+
+Inductive local_PC (A B: agent): nat -> capture -> Prop :=
+    | local_PC_init:
+        local_PC A B 0 []
+    | local_PC_now_index evs ix:
+        local_PC A B 0 ( privately_index A B ix :: evs )
+    | local_PC_now_Send evs pc pkt ix pc':
+        local_PC A B pc evs ->
+        local_PC A B (pc + 1) ( publicly_Send A B pkt ix pc' :: evs )
+    | local_PC_later ev evs pc: 
+        ~ is_privately_index A A ev -> 
+        ~ is_publicly_Send A ev ->
+        local_PC A B pc evs -> 
+        local_PC A B pc (ev :: evs).
+
+Inductive saved_PC (A B: agent): nat -> capture -> Prop :=
+    | saved_PC_now_ChallengeAccept evs n0 ix pc:
+        saved_PC A B pc ( privately_ChallengeAccept A B n0 ix pc :: evs )
+    | saved_PC_now_Accept evs pkt ix pc:
+        saved_PC A B (pc + 1) ( privately_Accept A B pkt ix pc :: evs )
+    | saved_PC_later ev evs pc:
+        ~ is_privately_ChallengeAccept A B ev ->
+        ~ is_privately_Accept A B ev ->
+        saved_PC A B pc evs ->
+        saved_PC A B pc (ev :: evs).
+
+Inductive nonce_inflight (A B: agent) (n0: nat): capture -> Prop :=
+    | nonce_inflight_now evs:
+        nonce_inflight A B n0 ( publicly_ChallengeRequest A B n0 :: evs )
+    | nonce_inflight_later_ChallengeAccept evs n1 ix pc:
+        n0 <> n1 ->
+        nonce_inflight A B n0 evs ->
+        nonce_inflight A B n0 ( privately_ChallengeAccept A B n1 ix pc :: evs )
+    | nonce_inflight_later ev evs:
+        ~ is_publicly_ChallengeRequest A B ev ->
+        ~ is_privately_ChallengeAccept A B ev ->
+        nonce_inflight A B n0 evs ->
+        nonce_inflight A B n0 (ev :: evs).
+
+Inductive Network: (*global_state ->*) capture -> Prop :=
+    | Network_Attack: forall (* sigma *) evs X B,
+        Network (* sigma *) evs ->
         synth (analz (knows Attacker evs)) X ->
-        Network sigma ( publicly Attacker B X :: evs )
+        Network (* sigma *) ( publicly Attacker B X :: evs )
     
-    | Network_init: forall sigma,
-        sigma = init_global_state index_seed ->
-        Network sigma []
+    | Network_init: (*forall sigma,
+        sigma = init_global_state index_seed ->*)
+        Network (* sigma *) []
 
-    | Network_reset: forall sigma evs B index_B sigma1 sigma2,
-        Network sigma evs -> 
+    | Network_reset: forall (* sigma *) evs A B index_B (* sigma1 sigma2 *),
+        Network (* sigma *) evs -> 
         fresh_index B evs index_B ->
-        sigma1 = update_index sigma B B index_B ->
-        sigma2 = update_PC sigma1 B B 0 ->
-        Network sigma2 ( privately_index B index_B :: evs )
+        (* sigma1 = update_index sigma B B index_B ->
+        sigma2 = update_PC sigma1 B B 0 -> *)
+        Network (* sigma2 *) ( privately_index B A index_B :: evs )
 
-    | Network_Send: forall sigma evs A B pkt index_B pc_B sigma1,
-        Network sigma evs -> 
-        saved_index sigma B B index_B -> 
-        saved_PC sigma B B pc_B ->
-        sigma1 = update_PC sigma B B (pc_B + 1) ->
-        Network sigma1 ( publicly_Send B A pkt index_B pc_B :: evs )
+    | Network_Send: forall (* sigma *) evs A B pkt index_B pc_B (* sigma1 *),
+        Network (* sigma *) evs -> 
+        local_index B A index_B evs -> 
+        local_PC B A pc_B evs ->
+        (* sigma1 = update_PC sigma B B (pc_B + 1) ->*)
+        Network (* sigma1 *) ( publicly_Send B A pkt index_B pc_B :: evs )
     
-    | Network_Accept: forall sigma evs A B B' index_B pc_B pkt pc sigma1,
-        Network sigma evs -> 
+    | Network_Accept: forall (* sigma *) evs A B B' index_B pc_B pkt pc (* sigma1 *),
+        Network (* sigma *) evs -> 
         List.In (publicly B' A (format_MAC_Send B A pkt index_B pc_B)) evs ->
-        saved_index sigma A B index_B ->
-        saved_PC sigma A B pc -> pc < pc_B -> 
-        sigma1 = update_PC sigma A B pc_B ->
-        Network sigma1 ( privately_Accept A B pkt index_B pc_B :: evs )
+        saved_index A B index_B evs ->
+        saved_PC A B pc evs -> pc < pc_B -> 
+        (* sigma1 = update_PC sigma A B pc_B -> *)
+        Network (* sigma1 *) ( privately_Accept A B pkt index_B pc_B :: evs )
         
-    | Network_ChallengeRequest: forall sigma evs A B n0 sigma1,
-        Network sigma evs -> 
+    | Network_ChallengeRequest: forall (* sigma *) evs A B n0 (* sigma1 *),
+        Network (* sigma *) evs -> 
         fresh_nonce A evs n0 ->
-        sigma1 = set_nonce sigma A B n0 true ->
-        Network sigma1 
+        (* sigma1 = set_nonce sigma A B n0 true -> *)
+        Network (* sigma1 *)
             ( privately_nonce A n0 :: publicly_ChallengeRequest A B n0 :: evs ) 
         
-    | Network_ChallengeReply: forall sigma evs A A' B n0 index_B sigma1 sigma2,
-        Network sigma evs -> 
+    | Network_ChallengeReply: forall (* sigma *) evs A A' B n0 index_B (* sigma1 sigma2 *),
+        Network (* sigma *) evs -> 
         List.In (publicly A' B (format_MAC_ChallengeRequest A B n0)) evs ->
         (* test_nonce sigma B A n0 = false ->*)
         fresh_index B evs index_B ->
-        sigma1 = update_index sigma B B index_B ->
-        sigma2 = update_PC sigma1 B B 0 ->
-        Network sigma2
-            ( privately_index B index_B :: 
+        (*sigma1 = update_index sigma B B index_B ->
+        sigma2 = update_PC sigma1 B B 0 -> *)
+        Network (* sigma2 *)
+            ( privately_index B A index_B :: 
                 publicly_ChallengeReply B A n0 index_B 0 :: evs )
                 
-    | Network_ChallengeAccept: forall sigma evs A B B' n0 index_B pc_B sigma1 sigma2 sigma3,
-        Network sigma evs ->
+    | Network_ChallengeAccept: forall (* sigma *) evs A B B' n0 index_B pc_B (* sigma1 sigma2 sigma3 *),
+        Network (* sigma *) evs ->
         List.In (publicly_ChallengeRequest A B n0) evs ->
         List.In (publicly B' A (format_MAC_ChallengeReply B A n0 index_B pc_B)) evs ->
-        test_nonce sigma A B n0 = true ->
-        sigma1 = update_index sigma A B index_B ->
+        nonce_inflight A B n0 evs ->
+        (* sigma1 = update_index sigma A B index_B ->
         sigma2 = update_PC sigma1 A B pc_B ->
-        sigma3 = set_nonce sigma2 A B n0 false ->
-        Network sigma3 
+        sigma3 = set_nonce sigma2 A B n0 false -> *)
+        Network (* sigma3 *)
             ( privately_ChallengeAccept A B n0 index_B pc_B :: evs ).
 
 Definition R (index1: string) pc1 index2 pc2 := index1 = index2 -> pc1 <= pc2.
