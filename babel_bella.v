@@ -276,6 +276,7 @@ Inductive Network: global_state -> capture -> Prop :=
         Network sigma evs ->
         List.In (publicly_ChallengeRequest A B n0) evs ->
         List.In (publicly B' A (format_MAC_ChallengeReply B A n0 index_B pc_B)) evs ->
+        ~ List.Exists ( fun ev => exists index pc, ev = privately_ChallengeAccept A B n0 index pc ) evs ->
         sigma1 = update_index sigma A B index_B ->
         sigma2 = update_PC sigma1 A B pc_B ->
         Network sigma2 
