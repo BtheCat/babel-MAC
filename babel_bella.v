@@ -268,10 +268,26 @@ Inductive Network: global_state -> capture -> Prop :=
                 publicly_ChallengeReply B A n0 index_B 0 :: evs ).
 
 Definition R (index1: string) pc1 index2 pc2 := index1 <> index2 \/ pc1 <= pc2.
+Definition R_sigma sigma sigma' :=
+        forall A B,
+            R (lookup_index sigma A B) (lookup_PC sigma A B) 
+                (lookup_index sigma' A B) (lookup_PC sigma' A B).
 
 Definition leq_capture evs evs' := exists pre, evs' = pre ++ evs.
 
-Lemma 
+Lemma invariant_init:
+    forall sigma sigma' evs,
+        Network sigma evs ->
+        Network sigma' evs ->
+        R_sigma sigma sigma'.
+Proof.
+    (*
+        On procède par induction sur evs :
+        - soit on bump par 1 le pc dans sigma et sigma' donc ok
+        - soit on change l'indice 
+        - soit on ne touche à rien
+    *)
+Admitted.
 
 Lemma invariant:
     forall sigma sigma' evs evs',
@@ -509,19 +525,9 @@ Proof.
         apply distinct_index_PC_dec. destruct Hdiscriminate as [(HindexEq & HpcEq) | Hdistinct].
         * assert ( HeqAccept : privately_Accept A0 B0 pkt0 index_B pc_B = 
                                 privately_Accept A B pkt index_B pc_B). admit.
-            destruct IHHnetwork as [HnotIn | [pre [suff (Hin & HnotInPre & HnotInSuff)]]].
-            + right. exists []. exists evs. simpl. split.
-                ++ f_equal. subst. assumption.
-                ++ split ; try easy.
-            + right. admit. 
-                (* Ici, on a un problème dans le but : on doit montrer
-                    exists pre0 suff0 : list event,
-                        privately_Accept A0 B0 pkt0 index_B pc_B :: evs =
-                        pre0 ++ privately_Accept A B pkt index pc :: suff0 /\
-                        ~ List.In (privately_Accept A B pkt index pc) pre0 /\
-                        ~ List.In (privately_Accept A B pkt index pc) suff0
-                mais cela n'est pas possible car on a aussi 
-                    privately_Accept A0 B0 pkt0 index_B pc_B = privately_Accept A B pkt index pc *)
+            right. exists []. exists evs. simpl. split.
+            + f_equal. subst. assumption.
+            + split ; try easy. eapply Accept_unicity.
         * assert ( HdistinctAccept : privately_Accept A B pkt index pc <> 
                                     privately_Accept A0 B0 pkt0 index_B pc_B ). admit.
             destruct IHHnetwork as [HnotIn | [pre [suff (Hin & HnotInPre & HnotInSuff)]]].            
